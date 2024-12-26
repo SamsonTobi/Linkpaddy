@@ -12,7 +12,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div style={{ width: '300px', height: '400px', padding: '20px', backgroundColor: '#f0f0f0', overflowY: 'auto' }}>
+    <div style={{ width: '500px', height: '550px' }}>
       {!currentUser ? <Login /> : <Dashboard />}
     </div>
   );

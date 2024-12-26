@@ -1,6 +1,6 @@
 import { auth, db } from './firebase';
 import { signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, arrayUnion, query, collection, where, getDocs } from 'firebase/firestore';
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SIGN_IN') {
@@ -9,6 +9,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     handleSignOut();
   } else if (message.type === 'ADD_FRIEND') {
     addFriend(message.friendUsername);
+  } else if (message.type === 'SHARE_LINK') {
+    shareLink(message.link, message.selectedFriends);
   }
 });
 
@@ -129,8 +131,24 @@ async function addFriend(friendUsername: string) {
     if (!userDataRaw) throw new Error('No user logged in');
 
     const userRef = doc(db, 'users', userDataRaw.uid);
+    const friendQuery = query(collection(db, 'users'), where('username', '==', friendUsername));
+    const friendSnapshot = await getDocs(friendQuery);
+
+    if (friendSnapshot.empty) {
+      throw new Error('Friend not found');
+    }
+
+    const friendDoc = friendSnapshot.docs[0];
+    const friendRef = doc(db, 'users', friendDoc.id);
+
+    // Add friend to user's friends list
     await updateDoc(userRef, {
       friends: arrayUnion(friendUsername)
+    });
+
+    // Add user to friend's friends list
+    await updateDoc(friendRef, {
+      friends: arrayUnion(userDataRaw.username)
     });
 
     const updatedFriends = [...(userDataRaw.friends || []), friendUsername];
@@ -148,6 +166,53 @@ async function addFriend(friendUsername: string) {
     console.error('Error adding friend:', error);
     chrome.runtime.sendMessage({ 
       type: 'ADD_FRIEND_ERROR', 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    });
+  }
+}
+
+async function shareLink(link: string, selectedFriends: string[]) {
+  try {
+    const userDataRaw = await new Promise<{ [key: string]: any }>((resolve) => {
+      chrome.storage.local.get(['user'], (result) => resolve(result.user));
+    });
+
+    if (!userDataRaw) throw new Error('No user logged in');
+
+    const sharedLinkData = {
+      link,
+      sender: userDataRaw.username,
+      timestamp: new Date().toISOString(),
+      recipients: selectedFriends,
+    };
+
+    // Add shared link to sender's shared links
+    const userRef = doc(db, 'users', userDataRaw.uid);
+    await updateDoc(userRef, {
+      sharedLinks: arrayUnion(sharedLinkData)
+    });
+
+    // Add shared link to each recipient's received links
+    for (const friendUsername of selectedFriends) {
+      const friendQuery = query(collection(db, 'users'), where('username', '==', friendUsername));
+      const friendSnapshot = await getDocs(friendQuery);
+      if (!friendSnapshot.empty) {
+        const friendDoc = friendSnapshot.docs[0];
+        const friendRef = doc(db, 'users', friendDoc.id);
+        await updateDoc(friendRef, {
+          receivedLinks: arrayUnion(sharedLinkData)
+        });
+      }
+    }
+
+    chrome.runtime.sendMessage({ 
+      type: 'LINK_SHARED', 
+      sharedLink: sharedLinkData
+    });
+  } catch (error) {
+    console.error('Error sharing link:', error);
+    chrome.runtime.sendMessage({ 
+      type: 'SHARE_LINK_ERROR', 
       error: error instanceof Error ? error.message : 'Unknown error occurred' 
     });
   }

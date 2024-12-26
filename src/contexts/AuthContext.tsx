@@ -3,9 +3,23 @@ import { User } from 'firebase/auth';
 import { db } from '../firebase';
 import { doc, getDoc, updateDoc, arrayUnion, collection, query, where, getDocs } from 'firebase/firestore';
 
+interface SharedLink {
+  link: string;
+  recipients: string[];
+  timestamp: string;
+}
+
+interface ReceivedLink {
+  link: string;
+  sender: string;
+  timestamp: string;
+}
+
 interface ExtendedUser extends User {
   username?: string;
   friends?: string[];
+  sharedLinks?: SharedLink[];
+  receivedLinks?: ReceivedLink[];
 }
 
 interface AuthContextType {
@@ -16,6 +30,7 @@ interface AuthContextType {
   error: string | null;
   addFriend: (friendUsername: string) => Promise<void>;
   searchUser: (username: string) => Promise<ExtendedUser | null>;
+  shareLink: (link: string, selectedFriends: string[]) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -55,6 +70,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsLoading(false);
       } else if (message.type === 'FRIEND_ADDED') {
         setCurrentUser(prevUser => prevUser ? { ...prevUser, friends: message.friends } : null);
+      } else if (message.type === 'LINK_SHARED') {
+        setCurrentUser(prevUser => {
+          if (!prevUser) return null;
+          const updatedSharedLinks = [...(prevUser.sharedLinks || []), message.sharedLink];
+          return { ...prevUser, sharedLinks: updatedSharedLinks };
+        });
       }
     };
 
@@ -113,6 +134,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const shareLink = async (link: string, selectedFriends: string[]) => {
+    if (!currentUser) throw new Error('No user logged in');
+    try {
+      chrome.runtime.sendMessage({ type: 'SHARE_LINK', link, selectedFriends });
+    } catch (error) {
+      console.error('Error sharing link:', error);
+      throw new Error('Failed to share link');
+    }
+  };
+
   const value = {
     currentUser,
     signIn,
@@ -121,6 +152,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     error,
     addFriend,
     searchUser,
+    shareLink,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
