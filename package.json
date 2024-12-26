@@ -1,0 +1,30 @@
+{
+  "name": "link-sharing-ext",
+  "version": "1.0.0",
+  "description": "Browser extension for sharing links with friends",
+  "main": "index.js",
+  "scripts": {
+    "build": "webpack --mode production",
+    "dev": "webpack --mode development --watch"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.11.2",
+    "firebase": "^9.22.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.7",
+    "@types/react-dom": "^18.2.4",
+    "@types/chrome": "^0.0.237",
+    "typescript": "^5.0.4",
+    "webpack": "^5.84.1",
+    "webpack-cli": "^5.1.1",
+    "ts-loader": "^9.4.3",
+    "css-loader": "^6.8.1",
+    "style-loader": "^3.3.3",
+    "html-webpack-plugin": "^5.5.1",
+    "copy-webpack-plugin": "^11.0.0"
+  }
+}
+

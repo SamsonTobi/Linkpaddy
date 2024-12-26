@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Link Sharing Extension",
+  "version": "1.0",
+  "description": "Share links with friends and colleagues",
+  "permissions": [
+    "identity",
+    "storage",
+    "identity.email"
+  ],
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Link Sharing Extension"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "host_permissions": [
+    "https://*.googleapis.com/*",
+    "https://*.firebaseio.com/*",
+    "https://*.firebase.com/*",
+    "https://firestore.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "309540318772-huqc3190fr5lb6l16rjur3u75qvnq6v4.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "openid"
+    ]
+  }
+}
