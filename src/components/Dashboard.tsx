@@ -54,11 +54,30 @@ const Dashboard: React.FC = () => {
   };
 
 
-  const handleLinkClick = async (link: string, status: 'unseen' | 'opened') => {
-    if (status === 'unseen') {
-      await updateLinkStatus(link, 'opened');
+  const handleLinkClick = async (link: any) => {
+    if (link.type === 'received' && link.status === 'unseen') {
+      try {
+        // Update status locally through AuthContext
+        await updateLinkStatus(link.id, 'opened');
+        
+        // Send message to background script to update sender's UI
+        chrome.runtime.sendMessage({ 
+          type: 'UPDATE_LINK_STATUS',
+          linkId: link.id,
+          status: 'opened',
+          senderUsername: link.sender
+        });
+  
+        // Open the link after status is updated
+        window.open(link.link, '_blank');
+      } catch (error) {
+        console.error('Error updating link status:', error);
+        // Still open the link even if status update fails
+        window.open(link.link, '_blank');
+      }
+    } else {
+      window.open(link.link, '_blank');
     }
-    window.open(link, '_blank');
   };
 
   const handleRemoveFriend = async (friendUsername: string) => {
@@ -138,11 +157,13 @@ const Dashboard: React.FC = () => {
                 <Share2 className="w-5 h-5 text-gray-400" />
                 <div className="flex-1">
                   <a 
-                    href={link.link} 
-                    target="_blank" 
+                    href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleLinkClick(link);
+                  }}
                     rel="noopener noreferrer" 
                     className="flex font-bold text-sm hover:underline mb-1"
-                    onClick={() => link.type === 'received' && handleLinkClick(link.link, link.status)}
                   >
                     {link.link}
                   </a>

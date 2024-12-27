@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { db } from '../firebase';
-import { doc, getDoc, updateDoc, arrayUnion, collection, query, where, getDocs, arrayRemove } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, collection, query, where, getDocs, arrayRemove, onSnapshot } from 'firebase/firestore';
 
 interface SharedLink {
   link: string;
@@ -11,6 +11,7 @@ interface SharedLink {
 }
 
 interface ReceivedLink {
+  id: string;
   link: string;
   sender: string;
   timestamp: string;
@@ -57,6 +58,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let unsubscribe: (() => void) | undefined;
+
     const messageListener = (message: any) => {
       if (message.type === 'SIGN_IN_COMPLETE') {
         setCurrentUser(message.user);
@@ -74,32 +77,41 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsLoading(false);
       } else if (message.type === 'FRIEND_ADDED') {
         setCurrentUser(prevUser => prevUser ? { ...prevUser, friends: message.friends } : null);
-      } else if (message.type === 'LINK_SHARED') {
-        setCurrentUser(prevUser => {
-          if (!prevUser) return null;
-          const updatedSharedLinks = [...(prevUser.sharedLinks || []), message.sharedLink];
-          return { ...prevUser, sharedLinks: updatedSharedLinks };
-        });
-      } else if (message.type === 'LINK_RECEIVED') {
-        setCurrentUser(prevUser => {
-          if (!prevUser) return null;
-          const updatedReceivedLinks = [...(prevUser.receivedLinks || []), message.receivedLink];
-          return { ...prevUser, receivedLinks: updatedReceivedLinks };
-        });
       }
     };
 
     chrome.runtime.onMessage.addListener(messageListener);
 
+    // Check for existing user in storage
     chrome.storage.local.get(['user'], (result) => {
       if (result.user) {
         setCurrentUser(result.user);
+        
+        // Set up real-time listener when user is loaded
+        const userRef = doc(db, 'users', result.user.uid);
+        unsubscribe = onSnapshot(userRef, (doc) => {
+          if (doc.exists()) {
+            const userData = doc.data();
+            const updatedUser = {
+              ...result.user,
+              ...userData
+            };
+            
+            // Update both state and chrome storage
+            setCurrentUser(updatedUser);
+            chrome.storage.local.set({ user: updatedUser });
+          }
+        });
       }
-      setIsLoading(false);
+      setIsLoading(false);  // Move this outside the if condition
     });
 
+    // Return cleanup function at the useEffect level
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
+      if (unsubscribe) {
+        unsubscribe();
+      }
     };
   }, []);
 
@@ -174,51 +186,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const updateLinkStatus = async (linkId: string, status: 'opened' | 'seen') => {
-    if (!currentUser) throw new Error('No user logged in');
-    try {
-      const userRef = doc(db, 'users', currentUser.uid);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data();
+  // Update the updateLinkStatus function in AuthContext:
+
+const updateLinkStatus = async (linkId: string, status: 'opened' | 'seen') => {
+  if (!currentUser) throw new Error('No user logged in');
+  try {
+    const userRef = doc(db, 'users', currentUser.uid);
+    const userDoc = await getDoc(userRef);
+    const userData = userDoc.data();
+    
+    if (userData && userData.receivedLinks) {
+      const updatedReceivedLinks = userData.receivedLinks.map((link: ReceivedLink) =>
+        link.id === linkId ? { ...link, status } : link
+      );
       
-      if (userData) {
-        const updatedReceivedLinks = userData.receivedLinks.map((link: ReceivedLink) =>
-          link.link === linkId ? { ...link, status } : link
-        );
-        
-        await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
-        
-        setCurrentUser(prevUser => {
-          if (!prevUser) return null;
-          return { ...prevUser, receivedLinks: updatedReceivedLinks };
-        });
-        
-        // Update sender's sharedLinks
-        const senderQuery = query(collection(db, 'users'), where('username', '==', userData.receivedLinks.find((link: ReceivedLink) => link.link === linkId)?.sender));
-        const senderSnapshot = await getDocs(senderQuery);
-        if (!senderSnapshot.empty) {
-          const senderDoc = senderSnapshot.docs[0];
-          const senderRef = doc(db, 'users', senderDoc.id);
-          const senderData = senderDoc.data();
-          const updatedSharedLinks = senderData.sharedLinks.map((link: SharedLink) =>
-            link.link === linkId ? { ...link, status } : link
-          );
-          await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
-        }
-  
-        // Notify background script to update local storage for sender
-        chrome.runtime.sendMessage({ 
-          type: 'UPDATE_LINK_STATUS', 
-          linkId, 
-          status, 
-          senderUsername: userData.receivedLinks.find((link: ReceivedLink) => link.link === linkId)?.sender 
-        });
-      }
-    } catch (error) {
-      console.error('Error updating link status:', error);
-      throw new Error('Failed to update link status');
+      await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
+      
+      // Update local state
+      setCurrentUser(prevUser => {
+        if (!prevUser) return null;
+        return {
+          ...prevUser,
+          receivedLinks: updatedReceivedLinks
+        };
+      });
     }
-  };
+  } catch (error) {
+    console.error('Error updating link status:', error);
+    throw new Error('Failed to update link status');
+  }
+};
 
   const value = {
     currentUser,

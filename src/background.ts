@@ -2,6 +2,15 @@ import { auth, db } from './firebase';
 import { signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc, arrayUnion, query, collection, where, getDocs } from 'firebase/firestore';
 
+type SharedLink = {
+  id: string;
+  link: string;
+  sender: string;
+  timestamp: string;
+  recipients: string[];
+  status: string;
+};
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SIGN_IN') {
     signIn();
@@ -11,6 +20,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     addFriend(message.friendUsername);
   } else if (message.type === 'SHARE_LINK') {
     shareLink(message.link, message.selectedFriends);
+  } else if (message.type === 'UPDATE_LINK_STATUS') {
+    const { linkId, status, senderUsername } = message;
+    
+    // Get current user data first
+    chrome.storage.local.get(['user'], async (result) => {
+      const currentUser = result.user;
+      if (!currentUser) return;
+
+      try {
+        // Update receiver's document
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userRef);
+        const userData = userDoc.data();
+        
+        if (userData && userData.receivedLinks) {
+          const updatedReceivedLinks = userData.receivedLinks.map((link: { id: any; }) => 
+            link.id === linkId ? { ...link, status } : link
+          );
+          await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
+        }
+
+        // Update sender's document
+        const senderQuery = query(collection(db, 'users'), where('username', '==', senderUsername));
+        const senderSnapshot = await getDocs(senderQuery);
+        
+        if (!senderSnapshot.empty) {
+          const senderDoc = senderSnapshot.docs[0];
+          const senderRef = doc(db, 'users', senderDoc.id);
+          const senderData = senderDoc.data();
+          
+          if (senderData && senderData.sharedLinks) {
+            const updatedSharedLinks = senderData.sharedLinks.map((link: { id: any; }) => 
+              link.id === linkId ? { ...link, status } : link
+            );
+            await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
+          }
+        }
+      } catch (error) {
+        console.error('Error updating link status:', error);
+      }
+    });
   }
 });
 
@@ -179,11 +229,15 @@ async function shareLink(link: string, selectedFriends: string[]) {
 
     if (!userDataRaw) throw new Error('No user logged in');
 
+    const linkId = Date.now().toString(); // Generate unique ID
+
     const sharedLinkData = {
+      id: linkId,
       link,
       sender: userDataRaw.username,
       timestamp: new Date().toISOString(),
       recipients: selectedFriends,
+      status: 'unseen'
     };
 
     // Add shared link to sender's shared links
@@ -199,16 +253,17 @@ async function shareLink(link: string, selectedFriends: string[]) {
       if (!friendSnapshot.empty) {
         const friendDoc = friendSnapshot.docs[0];
         const friendRef = doc(db, 'users', friendDoc.id);
+        
+        const receivedLinkData = {
+          ...sharedLinkData,
+          type: 'received'
+        };
+        
         await updateDoc(friendRef, {
-          receivedLinks: arrayUnion(sharedLinkData)
+          receivedLinks: arrayUnion(receivedLinkData)
         });
       }
     }
-
-    chrome.runtime.sendMessage({ 
-      type: 'LINK_SHARED', 
-      sharedLink: sharedLinkData
-    });
   } catch (error) {
     console.error('Error sharing link:', error);
     chrome.runtime.sendMessage({ 
@@ -217,4 +272,3 @@ async function shareLink(link: string, selectedFriends: string[]) {
     });
   }
 }
-
