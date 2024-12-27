@@ -6,7 +6,9 @@
   "permissions": [
     "identity",
     "storage",
-    "identity.email"
+    "identity.email",
+    "clipboardRead",
+    "tabs"
   ],
   "action": {
     "default_popup": "index.html",

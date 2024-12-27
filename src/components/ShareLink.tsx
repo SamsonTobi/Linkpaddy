@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Clipboard, Globe } from 'lucide-react';
 
 interface ShareLinkProps {
   onBack: () => void;
@@ -12,6 +12,44 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
   const [showFriendsList, setShowFriendsList] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [clipboardLink, setClipboardLink] = useState<string | null>(null);
+  const [currentTabLink, setCurrentTabLink] = useState<string | null>(null);
+  const [hasUsedClipboard, setHasUsedClipboard] = useState(false);
+
+  useEffect(() => {
+    const checkClipboard = async () => {
+      try {
+        const clipText = await navigator.clipboard.readText();
+        if (clipText.startsWith('http://') || clipText.startsWith('https://')) {
+          setClipboardLink(clipText);
+        }
+      } catch (err) {
+        console.error('Clipboard access error:', err);
+      }
+    };
+
+    const getCurrentTab = async () => {
+      try {
+        const queryOptions = { active: true, lastFocusedWindow: true };
+        const [tab] = await chrome.tabs.query(queryOptions);
+        if (tab?.url && (tab.url.startsWith('http://') || tab.url.startsWith('https://'))) {
+          setCurrentTabLink(tab.url);
+        }
+      } catch (err) {
+        console.error('Tab access error:', err);
+      }
+    };
+
+    checkClipboard();
+    getCurrentTab();
+  }, []);
+
+  const handleClipboardPaste = () => {
+    if (clipboardLink) {
+      setLink(clipboardLink);
+      setHasUsedClipboard(true);
+    }
+  };
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +80,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center gap-4 p-4 border-b">
+      <div className="flex items-center gap-2 p-4 border-b">
         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -62,11 +100,33 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
             />
           </div>
 
+          {!link && clipboardLink && !hasUsedClipboard && (
+            <button
+              type="button"
+              onClick={handleClipboardPaste}
+              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 flex items-center justify-center gap-2"
+            >
+              <Clipboard className="w-4 h-4" />
+              Paste from clipboard
+            </button>
+          )}
+
+          {!link && currentTabLink && (
+            <button
+              type="button"
+              onClick={() => setLink(currentTabLink)}
+              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg hover:bg-gray-200 flex items-center justify-center gap-2"
+            >
+              <Globe className="w-4 h-4" />
+              Share this current tab
+            </button>
+          )}
+
           {link && !showFriendsList ? (
             <button
               type="button"
               onClick={() => setShowFriendsList(true)}
-              className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-lg hover:bg-opacity-90"
+              className="w-full font-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-lg hover:bg-opacity-90"
             >
               Send to
             </button>

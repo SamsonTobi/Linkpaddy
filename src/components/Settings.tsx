@@ -11,7 +11,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="flex items-center gap-4 p-4 border-b">
+      <div className="flex items-center gap-2 p-4 border-b">
         <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -20,7 +20,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
       <div className="p-4 flex-1">
         <div className="flex flex-col items-center gap-4 mb-8">
-          <div className="w-20 h-20 rounded-full overflow-hidden">
+          <div className="w-20 h-20 rounded-full overflow-hidden border border-l-gray-400">
             <img 
               src={currentUser?.photoURL || '/default-avatar.png'} 
               alt="Profile" 
