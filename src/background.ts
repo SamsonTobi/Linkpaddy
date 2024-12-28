@@ -105,11 +105,13 @@ async function signIn() {
         email: user.email,
         username: username,
         friends: [],
-        pendingInvites: []
+        pendingInvites: [],
+        isNewUser: true  // Explicitly set this flag
       };
       await setDoc(userRef, userData);
     } else {
       userData = userDoc.data();
+      userData.isNewUser = false;  // Ensure this is set for existing users
     }
 
     await new Promise<void>((resolve) => {
@@ -272,3 +274,4 @@ async function shareLink(link: string, selectedFriends: string[]) {
     });
   }
 }
+

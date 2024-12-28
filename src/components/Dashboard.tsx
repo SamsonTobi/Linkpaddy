@@ -1,9 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Link2, Users, Share2, Eye, EyeOff, Settings, Share, UserMinus, UserPlus } from 'lucide-react';
+import { Link2, Users, Share2, Eye, EyeOff, Settings, Share, UserMinus, UserPlus, X } from 'lucide-react';
 import ShareLink from './ShareLink';
 import SettingsComponent from './Settings';
 import AddFriend from './AddFriend';
+
+const seenLinkIcon = <svg xmlns="http://www.w3.org/2000/svg"  className="w-5 h-5" width="28" height="28" viewBox="0 0 28 28" fill="none">
+<path d="M11.667 14C11.667 14.6188 11.9128 15.2123 12.3504 15.6499C12.788 16.0875 13.3815 16.3333 14.0003 16.3333C14.6192 16.3333 15.2127 16.0875 15.6502 15.6499C16.0878 15.2123 16.3337 14.6188 16.3337 14C16.3337 13.3812 16.0878 12.7877 15.6502 12.3501C15.2127 11.9125 14.6192 11.6667 14.0003 11.6667C13.3815 11.6667 12.788 11.9125 12.3504 12.3501C11.9128 12.7877 11.667 13.3812 11.667 14Z" stroke="#45A134" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M12.9523 20.9498C9.21511 20.5905 6.06433 18.2739 3.5 14C6.3 9.33333 9.8 7 14 7C18.2 7 21.7 9.33333 24.5 14C24.2545 14.4091 23.9966 14.8107 23.7265 15.204M17.5 22.1667L19.8333 24.5L24.5 19.8333" stroke="#45A134" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>;
 
 const Dashboard: React.FC = () => {
   const { currentUser, updateLinkStatus, removeFriend } = useAuth();
@@ -11,6 +16,7 @@ const Dashboard: React.FC = () => {
   const [showShareLink, setShowShareLink] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [friendToRemove, setFriendToRemove] = useState<string | null>(null);
 
   const sortedLinks = useMemo(() => {
     if (!currentUser) return [];
@@ -53,14 +59,11 @@ const Dashboard: React.FC = () => {
     return `${days} ${days === 1 ? 'day' : 'days'}`;
   };
 
-
   const handleLinkClick = async (link: any) => {
     if (link.type === 'received' && link.status === 'unseen') {
       try {
-        // Update status locally through AuthContext
         await updateLinkStatus(link.id, 'opened');
         
-        // Send message to background script to update sender's UI
         chrome.runtime.sendMessage({ 
           type: 'UPDATE_LINK_STATUS',
           linkId: link.id,
@@ -68,11 +71,9 @@ const Dashboard: React.FC = () => {
           senderUsername: link.sender
         });
   
-        // Open the link after status is updated
         window.open(link.link, '_blank');
       } catch (error) {
         console.error('Error updating link status:', error);
-        // Still open the link even if status update fails
         window.open(link.link, '_blank');
       }
     } else {
@@ -80,17 +81,23 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleRemoveFriend = async (friendUsername: string) => {
-    try {
-      await removeFriend(friendUsername);
-    } catch (error) {
-      console.error('Failed to remove friend:', error);
+  const handleRemoveFriend = (friendUsername: string) => {
+    setFriendToRemove(friendUsername);
+  };
+
+  const confirmRemoveFriend = async () => {
+    if (friendToRemove) {
+      try {
+        await removeFriend(friendToRemove);
+        setFriendToRemove(null);
+      } catch (error) {
+        console.error('Failed to remove friend:', error);
+      }
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
-      {/* Header */}
+    <div className="flex flex-col h-full bg-white relative">
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full overflow-hidden border border-l-gray-400">
@@ -122,7 +129,6 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Navigation */}
       <div className="flex gap-2 p-4">
         <button
           onClick={() => setActiveTab('links')}
@@ -148,7 +154,6 @@ const Dashboard: React.FC = () => {
         </button>
       </div>
 
-      {/* Content */}
       <div className="flex-1 p-4 pt-0 overflow-auto">
         {activeTab === 'links' && (
           <div className="space-y-3">
@@ -158,10 +163,10 @@ const Dashboard: React.FC = () => {
                 <div className="flex-1">
                   <a 
                     href="#"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    handleLinkClick(link);
-                  }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      handleLinkClick(link);
+                    }}
                     rel="noopener noreferrer" 
                     className="flex font-bold text-sm hover:underline mb-1"
                   >
@@ -177,7 +182,7 @@ const Dashboard: React.FC = () => {
                   {link.type === 'shared' && (
                     link.status === 'unseen' 
                       ? <EyeOff className="w-4 h-4 text-gray-400" />
-                      : <Eye className="w-4 h-4 text-green-500" />
+                      : seenLinkIcon
                   )}
                   <span className="text-xs text-gray-400">{getTimeAgo(link.timestamp)}</span>
                 </div>
@@ -214,8 +219,32 @@ const Dashboard: React.FC = () => {
           </div>
         )}
       </div>
+
+      {friendToRemove && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white p-6 rounded-lg shadow-lg max-w-sm w-full">
+            <h2 className="text-lg font-semibold mb-4">Remove Friend</h2>
+            <p className="mb-6">Are you sure you want to remove {friendToRemove} from your friends list?</p>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={() => setFriendToRemove(null)}
+                className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveFriend}
+                className="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600"
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default Dashboard;
+

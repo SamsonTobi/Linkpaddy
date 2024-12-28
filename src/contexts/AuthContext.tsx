@@ -36,6 +36,8 @@ interface AuthContextType {
   removeFriend: (friendUsername: string) => Promise<void>;
   shareLink: (link: string, selectedFriends: string[]) => Promise<void>;
   updateLinkStatus: (linkId: string, status: 'seen' | 'opened') => Promise<void>;
+  isNewUser: boolean; // Added isNewUser property
+  completeOnboarding: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,6 +58,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<ExtendedUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false); // Added isNewUser state
+
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
@@ -63,6 +67,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const messageListener = (message: any) => {
       if (message.type === 'SIGN_IN_COMPLETE') {
         setCurrentUser(message.user);
+        setIsNewUser(!!message.user.isNewUser);  // Set isNewUser based on the user data
         setIsLoading(false);
         setError(null);
       } else if (message.type === 'SIGN_IN_ERROR') {
@@ -71,6 +76,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setError(message.error);
       } else if (message.type === 'SIGN_OUT_COMPLETE') {
         setCurrentUser(null);
+        setIsNewUser(false);  // Reset isNewUser on sign out
         setIsLoading(false);
       } else if (message.type === 'SIGN_OUT_ERROR') {
         setError(message.error);
@@ -92,14 +98,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         unsubscribe = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
             const userData = doc.data();
-            const updatedUser = {
-              ...result.user,
-              ...userData
-            };
-            
+            setCurrentUser((prevUser) => { // Updated setCurrentUser call
+              if (prevUser) {
+                setIsNewUser(!!userData.isNewUser); // Update isNewUser state
+                return { ...prevUser, ...userData };
+              }
+              return null;
+            });
             // Update both state and chrome storage
-            setCurrentUser(updatedUser);
-            chrome.storage.local.set({ user: updatedUser });
+            chrome.storage.local.set({ user: { ...result.user, ...userData } });
           }
         });
       }
@@ -160,16 +167,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const searchUser = async (username: string): Promise<ExtendedUser | null> => {
+  const searchUser = async (searchTerm: string): Promise<ExtendedUser | null> => {
     try {
       const usersRef = collection(db, 'users');
-      const q = query(usersRef, where('username', '==', username));
-      const querySnapshot = await getDocs(q);
-      
+      let q = query(usersRef, where('username', '==', searchTerm));
+      let querySnapshot = await getDocs(q);
+    
+      if (querySnapshot.empty) {
+        // If no user found by username, search by email
+        q = query(usersRef, where('email', '==', searchTerm));
+        querySnapshot = await getDocs(q);
+      }
+    
       if (querySnapshot.empty) return null;
-      
+    
       const userDoc = querySnapshot.docs[0];
-      return { ...userDoc.data(), uid: userDoc.id } as ExtendedUser;
+
+      return { ...userDoc.data(), uid: userDoc.id} as ExtendedUser;
     } catch (error) {
       console.error('Error searching for user:', error);
       throw new Error('Failed to search for user');
@@ -188,34 +202,43 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Update the updateLinkStatus function in AuthContext:
 
-const updateLinkStatus = async (linkId: string, status: 'opened' | 'seen') => {
-  if (!currentUser) throw new Error('No user logged in');
-  try {
-    const userRef = doc(db, 'users', currentUser.uid);
-    const userDoc = await getDoc(userRef);
-    const userData = userDoc.data();
-    
-    if (userData && userData.receivedLinks) {
-      const updatedReceivedLinks = userData.receivedLinks.map((link: ReceivedLink) =>
-        link.id === linkId ? { ...link, status } : link
-      );
+  const updateLinkStatus = async (linkId: string, status: 'opened' | 'seen') => {
+    if (!currentUser) throw new Error('No user logged in');
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const userDoc = await getDoc(userRef);
+      const userData = userDoc.data();
       
-      await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
-      
-      // Update local state
-      setCurrentUser(prevUser => {
-        if (!prevUser) return null;
-        return {
-          ...prevUser,
-          receivedLinks: updatedReceivedLinks
-        };
-      });
+      if (userData && userData.receivedLinks) {
+        const updatedReceivedLinks = userData.receivedLinks.map((link: ReceivedLink) =>
+          link.id === linkId ? { ...link, status } : link
+        );
+        
+        await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
+        
+        // Update local state
+        setCurrentUser(prevUser => {
+          if (!prevUser) return null;
+          return {
+            ...prevUser,
+            receivedLinks: updatedReceivedLinks
+          };
+        });
+      }
+    } catch (error) {
+      console.error('Error updating link status:', error);
+      throw new Error('Failed to update link status');
     }
-  } catch (error) {
-    console.error('Error updating link status:', error);
-    throw new Error('Failed to update link status');
-  }
-};
+  };
+
+  const completeOnboarding = () => { // Added completeOnboarding function
+    setIsNewUser(false);
+    if (currentUser) {
+      const userRef = doc(db, 'users', currentUser.uid);
+      updateDoc(userRef, { isNewUser: false });
+      setCurrentUser(prevUser => prevUser ? { ...prevUser, isNewUser: false } : null);
+    }
+  };
 
   const value = {
     currentUser,
@@ -228,6 +251,8 @@ const updateLinkStatus = async (linkId: string, status: 'opened' | 'seen') => {
     removeFriend,
     shareLink,
     updateLinkStatus,
+    isNewUser, // Added isNewUser property
+    completeOnboarding, // Added completeOnboarding function
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

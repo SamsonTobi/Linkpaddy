@@ -6,10 +6,15 @@ interface AddFriendProps {
   onBack: () => void;
 }
 
+interface SearchResult {
+  username: string;
+  email: string;
+}
+
 const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   const { searchUser, addFriend } = useAuth();
-  const [username, setUsername] = useState('');
-  const [searchResult, setSearchResult] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const handleSearch = async (e: React.FormEvent) => {
@@ -17,9 +22,12 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     setError(null);
     setSearchResult(null);
     try {
-      const user = await searchUser(username);
+      const user = await searchUser(searchTerm);
       if (user) {
-        setSearchResult(user.username || '');
+        setSearchResult({
+          username: user.username || '',
+          email: user.email || '',
+        });
       } else {
         setError('User not found');
       }
@@ -29,11 +37,21 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   };
 
   const handleAddFriend = async () => {
+    if (!searchResult) return;
     try {
-      await addFriend(username);
+      await addFriend(searchResult.username);
       onBack();
     } catch (error) {
       setError('Failed to add friend');
+    }
+  };
+
+  const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    if (value === '') {
+      setSearchResult(null);
+      setError(null);
     }
   };
 
@@ -51,9 +69,9 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
           <div className="relative">
             <input
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Search by username"
+              value={searchTerm}
+              onChange={handleSearchInputChange}
+              placeholder="Search by username or email"
               className="w-full p-3 pr-10 border rounded-lg focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]"
             />
             <button
@@ -67,10 +85,12 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
         {searchResult && (
           <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-            <p className="font-medium">User found: {searchResult}</p>
+            <p className='text-xs text-gray-500 mb-2'>✓ Found</p>
+            <p className='font-medium text-base'>{searchResult.email}</p>
+            <p className='text-sm text-gray-700'>@{searchResult.username}</p>
             <button
               onClick={handleAddFriend}
-              className="mt-2 w-full bg-[#6C5CE7] text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+              className="mt-4 w-full bg-[#6C5CE7] text-white font-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
             >
               <UserPlus className="w-4 h-4" />
               Add Friend
@@ -85,4 +105,3 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 };
 
 export default AddFriend;
-
