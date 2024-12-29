@@ -11,11 +11,13 @@ import {
 
 interface ShareLinkProps {
   onBack: () => void;
+  initialLink?: string;
+  
 }
 
-const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
+const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
   const { currentUser, shareLink } = useAuth();
-  const [link, setLink] = useState("");
+  const [link, setLink] = useState(initialLink);
   const [showFriendsList, setShowFriendsList] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -50,9 +52,11 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
       }
     };
 
-    checkClipboard();
-    getCurrentTab();
-  }, []);
+    if (!initialLink) {
+      checkClipboard();
+      getCurrentTab();
+    }
+  }, [initialLink]);
 
   const handleClipboardPaste = () => {
     if (clipboardLink) {
@@ -167,13 +171,15 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack }) => {
                       </label>
                     ))}
                   </div>
+                  <div>
                   <button
                     type="submit"
-                    className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-lg hover:bg-opacity-90 gap-2 outfit-semibold flex items-center justify-center"
+                    className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-lg hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center"
                   >
                     <Share className="w-4 h-4" />
                     Share
                   </button>
+                  </div>
                 </>
               ) : (
                 <p className="text-gray-500 outfit-normal">

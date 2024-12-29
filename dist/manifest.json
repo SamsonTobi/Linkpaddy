@@ -8,7 +8,9 @@
     "storage",
     "identity.email",
     "clipboardRead",
-    "tabs"
+    "tabs",
+    "contextMenus",
+    "activeTab"
   ],
   "action": {
     "default_popup": "index.html",
@@ -25,6 +27,12 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"]
+    }
+  ],
   "host_permissions": [
     "https://*.googleapis.com/*",
     "https://*.firebaseio.com/*",

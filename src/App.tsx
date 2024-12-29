@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import { useAuth } from './contexts/AuthContext';
 import { Loader } from 'lucide-react';
 import Onboarding from './components/Onboarding';
+import ShareLink from './components/ShareLink';
+
 
 const LoadingSpinner: React.FC = () => (
   <div className="flex flex-col gap-3 items-center justify-center h-full bg-white">
@@ -15,29 +17,65 @@ const LoadingSpinner: React.FC = () => (
 
 const AppContent: React.FC = () => {
   const { currentUser, isLoading, isNewUser } = useAuth();
+  const [showContent, setShowContent] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
 
-  return (
-    <div style={{ width: '450px', height: '550px' }}>
-      {isLoading ? (
-        <LoadingSpinner />
-      ) : !currentUser ? (
-        <Login />
-      ) : isNewUser ? (
-        <Onboarding />
-      ) : (
-        <Dashboard />
-      )}
-    </div>
-  );
+  useEffect(() => {
+    // Message listener setup
+    chrome.storage.local.get(['shareUrl'], (result) => {
+      if (result.shareUrl) {
+        setShareUrl(result.shareUrl);
+        // Clear the stored URL after retrieving it
+        chrome.storage.local.remove('shareUrl');
+      }
+    });
+      
+    // Timer setup for content display
+    let timer: NodeJS.Timeout | undefined;
+    if (!isLoading && currentUser !== undefined && isNewUser !== undefined) {
+      timer = setTimeout(() => {
+        setShowContent(true);
+      }, 500);
+    }
+  
+    // Cleanup function
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isLoading, currentUser, isNewUser]); // Include all dependencies
+
+  // Show loading spinner while either loading or waiting for timer
+  if (isLoading || currentUser === undefined || isNewUser === undefined || !showContent) {
+    return <LoadingSpinner />;
+  }
+
+  // After loading and timer, show appropriate content
+  if (!currentUser) {
+    return <Login />;
+  }
+
+  if (isNewUser) {
+    return <Onboarding />;
+  }
+
+  if (shareUrl) {
+    return <ShareLink onBack={() => setShareUrl(null)} initialLink={shareUrl} />;
+  }
+
+  return <Dashboard />;
 };
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <div style={{ width: '450px', height: '550px' }}>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </div>
   );
 };
 
 export default App;
+
+
 

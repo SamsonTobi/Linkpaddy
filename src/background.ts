@@ -11,6 +11,24 @@ type SharedLink = {
   status: string;
 };
 
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: "shareLinkMenu",
+    title: "Share this site with Link Sharing Extension",
+    contexts: ["page"]
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === "shareLinkMenu" && tab && tab.url) {
+    // Store the URL in local storage
+    chrome.storage.local.set({ shareUrl: tab.url }, () => {
+      // Open the extension popup
+      chrome.action.openPopup();
+    });
+  }
+});
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SIGN_IN') {
     signIn();

@@ -100,25 +100,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     chrome.storage.local.get(['user'], (result) => {
       if (result.user) {
         setCurrentUser(result.user);
-        
+        setIsNewUser(!!result.user.isNewUser);  // Set isNewUser based on stored data
+
         // Set up real-time listener when user is loaded
         const userRef = doc(db, 'users', result.user.uid);
         unsubscribe = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
             const userData = doc.data();
-            setCurrentUser((prevUser) => { // Updated setCurrentUser call
+            setCurrentUser((prevUser) => {
               if (prevUser) {
+                const updatedUser = { ...prevUser, ...userData };
                 setIsNewUser(!!userData.isNewUser); // Update isNewUser state
-                return { ...prevUser, ...userData };
+                // Update chrome storage
+                chrome.storage.local.set({ user: updatedUser });
+                return updatedUser;
               }
               return null;
             });
-            // Update both state and chrome storage
-            chrome.storage.local.set({ user: { ...result.user, ...userData } });
           }
         });
       }
-      setIsLoading(false);  // Move this outside the if condition
+      setIsLoading(false);  // Keep this outside the if condition
     });
 
     // Return cleanup function at the useEffect level
