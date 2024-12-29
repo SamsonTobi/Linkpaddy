@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { db } from '../firebase';
-import { doc, getDoc, updateDoc, arrayUnion, collection, query, where, getDocs, arrayRemove, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, collection, query, where, getDocs, arrayRemove, onSnapshot, deleteDoc } from 'firebase/firestore';
 
 interface SharedLink {
   link: string;
@@ -38,6 +38,7 @@ interface AuthContextType {
   updateLinkStatus: (linkId: string, status: 'seen' | 'opened') => Promise<void>;
   isNewUser: boolean; // Added isNewUser property
   completeOnboarding: () => void;
+  deleteAccount: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -79,6 +80,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsNewUser(false);  // Reset isNewUser on sign out
         setIsLoading(false);
       } else if (message.type === 'SIGN_OUT_ERROR') {
+        setError(message.error);
+        setIsLoading(false);
+      } else if (message.type === 'DELETE_ACCOUNT_COMPLETE') {
+        setCurrentUser(null);
+        setIsNewUser(false);
+        setIsLoading(false);
+      } else if (message.type === 'DELETE_ACCOUNT_ERROR') {
         setError(message.error);
         setIsLoading(false);
       } else if (message.type === 'FRIEND_ADDED') {
@@ -131,6 +139,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setIsLoading(true);
     setError(null);
     chrome.runtime.sendMessage({ type: 'SIGN_OUT' });
+  };
+
+  const deleteAccount = async () => {
+    if (!currentUser) throw new Error('No user logged in');
+    
+    try {
+      // Send delete request to background script
+      chrome.runtime.sendMessage({ 
+        type: 'DELETE_ACCOUNT',
+        uid: currentUser.uid 
+      });
+      
+      // Let the background script handle the actual deletion
+      // We'll update states when we receive the DELETE_ACCOUNT_COMPLETE message
+    } catch (error) {
+      console.error('Error initiating account deletion:', error);
+      throw new Error('Failed to delete account');
+    }
   };
 
   const addFriend = async (friendUsername: string) => {
@@ -253,6 +279,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     updateLinkStatus,
     isNewUser, // Added isNewUser property
     completeOnboarding, // Added completeOnboarding function
+    deleteAccount,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

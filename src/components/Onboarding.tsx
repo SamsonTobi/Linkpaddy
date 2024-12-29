@@ -1,14 +1,18 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { Users } from 'lucide-react';
-import AddFriend from './AddFriend';
+import OnboardingAddFriends from './OnboardingAddFriends';
 
 const Onboarding: React.FC = () => {
   const { currentUser, completeOnboarding } = useAuth();
-  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showAddFriends, setShowAddFriends] = useState(false);
 
-  if (showAddFriend) {
-    return <AddFriend onBack={() => setShowAddFriend(false)} />;
+  const handleComplete = () => {
+    completeOnboarding();
+  };
+
+  if (showAddFriends) {
+    return <OnboardingAddFriends onComplete={handleComplete} />;
   }
 
   return (
@@ -40,7 +44,7 @@ const Onboarding: React.FC = () => {
 
         {/* Add Friends Button */}
         <button
-          onClick={() => setShowAddFriend(true)}
+          onClick={() => setShowAddFriends(true)}
           className="w-[85%] flex items-center justify-center gap-2 bg-[#6C5CE7] text-white text-xs py-3 px-6 rounded-full font-medium outfit-medium hover:bg-[#6051ce]"
         >
           <Users className="w-4 h-4" />

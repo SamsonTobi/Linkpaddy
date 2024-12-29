@@ -1,6 +1,6 @@
 import { auth, db } from './firebase';
 import { signInWithCredential, GoogleAuthProvider, signOut as firebaseSignOut } from 'firebase/auth';
-import { doc, setDoc, getDoc, updateDoc, arrayUnion, query, collection, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, getDoc, updateDoc, arrayUnion, query, collection, where, getDocs, arrayRemove, deleteDoc } from 'firebase/firestore';
 
 type SharedLink = {
   id: string;
@@ -16,6 +16,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     signIn();
   } else if (message.type === 'SIGN_OUT') {
     handleSignOut();
+  } else if (message.type === 'DELETE_ACCOUNT') {
+    deleteUser(message.uid);
   } else if (message.type === 'ADD_FRIEND') {
     addFriend(message.friendUsername);
   } else if (message.type === 'SHARE_LINK') {
@@ -171,6 +173,122 @@ async function handleSignOut() {
       type: 'SIGN_OUT_ERROR', 
       error: error instanceof Error ? error.message : 'Unknown error occurred' 
     });
+  }
+}
+
+async function deleteUser(uid: string) {
+  try {
+    // Get the current user data from storage
+    const userData = await new Promise<{
+      uid: string;
+      username?: string;
+      [key: string]: any;
+    }>((resolve, reject) => {
+      chrome.storage.local.get(['user'], (result) => {
+        if (!result.user) {
+          reject(new Error('No user data found'));
+          return;
+        }
+        resolve(result.user);
+      });
+    });
+
+    // Verify the uid matches
+    if (userData.uid !== uid) {
+      throw new Error('User ID mismatch');
+    }
+
+    // Delete user document from Firestore
+    const userRef = doc(db, 'users', uid);
+    await deleteDoc(userRef);
+
+    // Clean up user from friends' lists if username exists
+    if (userData.username) {
+      const friendsQuery = query(
+        collection(db, 'users'), 
+        where('friends', 'array-contains', userData.username)
+      );
+      const friendsSnapshot = await getDocs(friendsQuery);
+      
+      await Promise.all(
+        friendsSnapshot.docs.map((friendDoc) => 
+          updateDoc(doc(db, 'users', friendDoc.id), {
+            friends: arrayRemove(userData.username)
+          })
+        )
+      );
+    }
+
+    // Handle Firebase Auth user deletion
+    const currentUser = auth.currentUser;
+    if (currentUser && currentUser.uid === uid) {
+      // Get fresh token
+      const token = await new Promise<string>((resolve, reject) => {
+        chrome.identity.getAuthToken({ interactive: false }, (token) => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+            return;
+          }
+          if (!token) {
+            reject(new Error('No auth token available'));
+            return;
+          }
+          resolve(token);
+        });
+      });
+
+      // Revoke Google OAuth token
+      await fetch(`https://accounts.google.com/o/oauth2/revoke?token=${token}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+
+      // Remove cached token
+      await new Promise<void>((resolve, reject) => {
+        chrome.identity.removeCachedAuthToken({ token }, () => {
+          if (chrome.runtime.lastError) {
+            reject(chrome.runtime.lastError);
+            return;
+          }
+          chrome.identity.clearAllCachedAuthTokens(() => {
+            if (chrome.runtime.lastError) {
+              reject(chrome.runtime.lastError);
+              return;
+            }
+            resolve();
+          });
+        });
+      });
+
+      // Delete the Firebase Auth user
+      await currentUser.delete();
+    }
+
+    // Clear local storage
+    await new Promise<void>((resolve, reject) => {
+      chrome.storage.local.clear(() => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+          return;
+        }
+        resolve();
+      });
+    });
+
+    // Send success message
+    chrome.runtime.sendMessage({ 
+      type: 'DELETE_ACCOUNT_COMPLETE' 
+    });
+
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    chrome.runtime.sendMessage({ 
+      type: 'DELETE_ACCOUNT_ERROR', 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    });
+    throw error; // Re-throw error for handling by caller
   }
 }
 
