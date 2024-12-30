@@ -35,7 +35,7 @@ const AppContent: React.FC = () => {
     if (!isLoading && currentUser !== undefined && isNewUser !== undefined) {
       timer = setTimeout(() => {
         setShowContent(true);
-      }, 500);
+      }, 200);
     }
   
     // Cleanup function

@@ -9,10 +9,9 @@ import {
   Copy,
   ArrowDownToDot,
   ArrowUpFromDot,
-  Check
+  Check,
 } from "lucide-react";
 import inviteIllus from "../assets/invite-illus.png"; // Adjust the path as necessary
-
 
 const inviteLink = "https://app.example.com/invite/xyz123"; // Change this value as needed
 
@@ -69,7 +68,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-white" onClick={() => setShowKebabMenu(!showKebabMenu)}>
+    <div
+      className="flex flex-col h-full bg-white"
+      onClick={() => setShowKebabMenu(!showKebabMenu)}
+    >
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           <button
@@ -179,8 +181,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 onClick={copyInviteLink}
                 className="flex items-center gap-2 outfit-medium px-4 py-2 text-[#22162B] bg-white rounded-full hover:bg-gray-50"
               >
-                {isCopied ? <Check className="w-4 h-4 text-[#45A134]" /> : <Copy className="w-3.5 h-3.5" />}
-                {isCopied ? 'Copied!' : 'Copy Invite Link'}
+                {isCopied ? (
+                  <Check className="w-4 h-4 text-[#45A134]" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+                {isCopied ? "Copied!" : "Copy Invite Link"}
               </button>
             </div>
             <div className="w-36 absolute -bottom-1.5 right-0">
@@ -198,7 +204,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Delete Account</h3>
+              <h3 className="text-lg font-semibold outfit-semibold text-gray-900">
+                Permanently Delete Your Account
+              </h3>
               <button
                 onClick={() => setShowDeleteDialog(false)}
                 className="p-1 hover:bg-gray-100 rounded-full"
@@ -207,24 +215,64 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               </button>
             </div>
 
-            <p className="text-gray-600 mb-6">
-              Are you sure you want to delete your account? This action cannot
-              be undone and all your data will be permanently deleted.
-            </p>
+            <div className="space-y-4 mb-6">
+              <p className="text-gray-700 font-medium outfit-medium">
+                Before you go, please be aware that deleting your account will:
+              </p>
+              <ul className="space-y-2 text-gray-600">
+                <li className="flex items-start gap-2">
+                  <span className="w-1 h-1 rounded-full bg-gray-600 mt-2"></span>
+                  <span className="outfit-normal">
+                    Remove all your shared and received links
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1 h-1 rounded-full bg-gray-600 mt-2"></span>
+                  <span className="outfit-normal">
+                    Delete your profile information and settings
+                  </span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1 h-1 rounded-full bg-gray-600 mt-2"></span>
+                  <span className="outfit-normal">
+                    End all active connections with other users
+                  </span>
+                </li>
+                {/* <li className="flex items-start gap-2">
+            <span className="w-1 h-1 rounded-full bg-gray-600 mt-2"></span>
+            <span className="outfit-normal">Remove access to any saved collections or favorites</span>
+          </li> */}
+              </ul>
+
+              <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4 text-xs outfit-normal text-gray-700">
+                <p className="font-medium mb-1">
+                  This action is permanent and cannot be reversed.
+                </p>
+                <p>Your data cannot be recovered once deleted.</p>
+              </div>
+
+              <p className="text-gray-600 text-xs outfit-normal">
+                If you're experiencing issues with the platform, consider
+                logging out temporarily or contacting our support team instead.
+              </p>
+            </div>
 
             <div className="flex gap-3 justify-end">
               <button
-                onClick={() => setShowDeleteDialog(false)}
-                className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-50"
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setShowKebabMenu(false);
+                }}
+                className="px-4 py-2 outfit-medium rounded-full border border-gray-300 hover:bg-gray-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
+                className="px-4 py-2 bg-red-600 outfit-semibold text-white rounded-full hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isDeleting ? "Deleting..." : "Delete Account"}
+                {isDeleting ? "Deleting..." : "Delete My Account"}
               </button>
             </div>
           </div>
