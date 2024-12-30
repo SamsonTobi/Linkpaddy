@@ -1,6 +1,18 @@
 import React, { useState, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { ArrowLeft, LogOut, Trash2, X, MoreVertical, Copy } from "lucide-react";
+import {
+  ArrowLeft,
+  LogOut,
+  Trash2,
+  X,
+  MoreVertical,
+  Copy,
+  ArrowDownToDot,
+  ArrowUpFromDot,
+  Check
+} from "lucide-react";
+import inviteIllus from "../assets/invite-illus.png"; // Adjust the path as necessary
+
 
 const inviteLink = "https://app.example.com/invite/xyz123"; // Change this value as needed
 
@@ -13,6 +25,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showKebabMenu, setShowKebabMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isCopied, setIsCopied] = useState(false);
 
   const stats = useMemo(() => {
     if (!currentUser) return null;
@@ -51,10 +64,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
   const copyInviteLink = () => {
     navigator.clipboard.writeText(inviteLink);
+    setIsCopied(true);
+    setTimeout(() => setIsCopied(false), 2000);
   };
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white" onClick={() => setShowKebabMenu(!showKebabMenu)}>
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">
           <button
@@ -65,12 +80,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           </button>
           <h2 className="text-xl font-semibold outfit-semibold">Settings</h2>
         </div>
-        <div className=" p-2 bg-gray-50 rounded-lg">
-        <p className="text-gray-700 outfit-normal">{currentUser?.email}</p>
+        <div className=" py-2 px-3 bg-gray-50 rounded-lg">
+          <p className="text-gray-600 outfit-normal">{currentUser?.email}</p>
         </div>
       </div>
 
-      <div className="p-4 space-y-6">
+      <div className="p-4 space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full overflow-hidden border">
@@ -89,7 +104,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               </p>
             </div>
           </div>
-          <div className="relative flex items-center gap-3">
+          <div className="relative flex items-center gap-1">
             <button
               onClick={signOut}
               className="w-full flex items-center rounded-full justify-center gap-2 py-2 px-4 text-red-500 bg-red-50 outfit-semibold"
@@ -105,13 +120,13 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <MoreVertical className="w-5 h-5" />
             </button>
             {showKebabMenu && (
-              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border">
+              <div className="absolute right-0 mt-20 w-40 bg-white rounded-lg shadow-lg border">
                 <button
                   onClick={() => {
                     setShowDeleteDialog(true);
                     setShowKebabMenu(false);
                   }}
-                  className="w-full flex gap-2 text-left px-4 outfit-normal py-2 text-red-600"
+                  className="w-full flex gap-2 text-left px-4 outfit-normal py-2 text-red-600 hover:text-red-800"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                   Delete account
@@ -120,35 +135,43 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             )}
           </div>
         </div>
- 
-        <div className="space-y-2 border-t pt-4">
-          <h4 className="text-[#6254F9] text-sm font-semibold outfit-semibold">
-            Your link stats
+
+        <div className="space-y-2 border-t pt-4 mb-3">
+          <h4 className="text-[#6254F9] text-sm font-medium outfit-medium">
+            Your Link Stats
           </h4>
           <div className="flex gap-2">
-            <div className="flex p-2 border rounded-lg">
-              <div className="flex items-center gap-2 text-sm">
+            <div className="flex py-2 px-4 border rounded-lg">
+              <div className="flex items-center gap-1.5 text-sm">
                 <span className="font-medium outfit-medium">
                   {stats?.totalSent || 0}
                 </span>
-                <span className="text-gray-600 outfit-normal">Sent</span>
+                <span className="flex items-center text-gray-600 outfit-normal">
+                  Sent
+                  <ArrowUpFromDot strokeWidth={1.7} className="w-3 h-3 ml-1" />
+                </span>
               </div>
             </div>
-            <div className="fle p-2 border rounded-lg">
-              <div className="flex items-center gap-2 text-sm">
+            <div className="fle py-2 px-4 border rounded-lg">
+              <div className="flex items-center gap-1.5 text-sm">
                 <span className="font-semibold outfit-semibold">
                   {stats?.totalReceived || 0}
                 </span>
-                <span className="text-gray-600 outfit-normal">Received</span>
+                <span className="flex items-center text-gray-600 outfit-normal">
+                  Received
+                  <ArrowDownToDot strokeWidth={1.7} className="w-3 h-3 ml-1" />
+                </span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-[#F5DD90] rounded-lg p-6 relative">
+        <div className="bg-[#F5DD90] rounded-lg px-5 py-6 relative overflow-hidden">
           <div className="flex">
-            <div className="">
-              <h3 className="text-lg font-semibold outfit-semibold">Bring your friends aboard</h3>
+            <div className="w-3/5">
+              <h3 className="text-lg font-semibold outfit-semibold">
+                Bring your friends aboard
+              </h3>
               <p className="text-gray-700 outfit-normal mb-4">
                 Turn everyday links into shared discoveries with friends
               </p>
@@ -156,11 +179,17 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 onClick={copyInviteLink}
                 className="flex items-center gap-2 outfit-medium px-4 py-2 text-[#22162B] bg-white rounded-full hover:bg-gray-50"
               >
-                <Copy className="w-3.5 h-3.5" />
-                Copy Invite Link
+                {isCopied ? <Check className="w-4 h-4 text-[#45A134]" /> : <Copy className="w-3.5 h-3.5" />}
+                {isCopied ? 'Copied!' : 'Copy Invite Link'}
               </button>
             </div>
-            <div className="w-32 absolute -bottom-3 -right-3">{/* Place for illustration */}</div>
+            <div className="w-36 absolute -bottom-1.5 right-0">
+              <img
+                src={inviteIllus}
+                alt="Link sharing illustration"
+                className="w-full"
+              />
+            </div>
           </div>
         </div>
       </div>
