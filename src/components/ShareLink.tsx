@@ -84,11 +84,11 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
     }
   };
 
-  const toggleFriend = (friend: string) => {
-    setSelectedFriends((prev) =>
-      prev.includes(friend)
-        ? prev.filter((f) => f !== friend)
-        : [...prev, friend]
+  const toggleFriend = (friendUsername: string) => {
+    setSelectedFriends(prev => 
+      prev.includes(friendUsername) 
+        ? prev.filter(f => f !== friendUsername)
+        : [...prev, friendUsername]
     );
   };
 
@@ -158,16 +158,27 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
                   <div className="space-y-2 mb-4">
                     {currentUser.friends.map((friend) => (
                       <label
-                        key={friend}
+                        key={friend.username}
                         className="flex items-center cursor-pointer gap-2 p-3 border rounded-lg"
                       >
                         <input
                           type="checkbox"
-                          checked={selectedFriends.includes(friend)}
-                          onChange={() => toggleFriend(friend)}
+                          checked={selectedFriends.includes(friend.username)}
+                          onChange={() => toggleFriend(friend.username)}
                           className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm"
                         />
-                        <span className="outfit-normal">@{friend}</span>
+                        {/* <span className="outfit-normal">@{friend}</span> */}
+                        <div className="flex items-center gap-2">
+                        <img 
+                          src={friend.photoURL || '/default-avatar.png'} 
+                          alt={`${friend.username}'s avatar`} 
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                        <div>
+                          <p className="font-medium text-sm outfit-medium">{friend.displayName}</p>
+                          <p className="outfit-normal text-gray-400 -mt-1">@{friend.username}</p>
+                        </div>
+                      </div>
                       </label>
                     ))}
                   </div>

@@ -71,7 +71,6 @@ const Dashboard: React.FC = () => {
     );
   }, [currentUser]);
 
-
   const uniqueFriends = useMemo(() => {
     if (!currentUser?.friends) return [];
     return Array.from(new Set(currentUser.friends));
@@ -268,33 +267,52 @@ const Dashboard: React.FC = () => {
         {activeTab === "friends" && (
           <div className="space-y-4 h-full">
             <div className="space-y-2 h-full">
-
-            {uniqueFriends.length > 0 ? (
+              {uniqueFriends.length > 0 ? (
                 <div className="w-full">
                   <button
                     onClick={() => setShowAddFriend(true)}
                     className="w-full border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium rounded-full py-2 px-4 flex items-center justify-center gap-2"
-
                   >
                     <UserPlus className="w-4 h-4" />
-                    Add New Friend
+                    Add/Invite a New Friend
                   </button>
-                  <p className="text-gray-500 outfit-normal mt-4 mb-2">Added Friends</p>
+                  <p className="text-gray-500 outfit-normal mt-4 mb-2">
+                    Added Friends
+                  </p>
                   {uniqueFriends.map((friend) => (
-                  <div
-                    key={friend}
-                    className="flex items-center outfit-medium text-sm justify-between p-3 bg-gray-50 rounded-lg mb-2"
-                  >
-                    <span><span className="text-gray-600">@</span>{friend}</span>
-                    <button
-                      onClick={() => handleRemoveFriend(friend)}
-                      className="text-red-500 outfit-normal text-xs items-center justify-center flex hover:text-red-700"
+                    <div
+                      key={friend.username}
+                      className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
-                      <UserMinus className="w-3 h-3 mr-1.5" />
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-3 justify-between w-full">
+                        <div className="flex gap-3">
+                        <img
+                          src={friend.photoURL || "/default-avatar.png"}
+                          alt={`${friend.username}'s avatar`}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                        <div>
+                          <p className="font-medium text-sm outfit-medium">
+                            @{friend.displayName}
+                          </p>
+                          <p className="text-sm text-gray-500 outfit-normal">
+                            {friend.username}
+                          </p>
+                          <p className="text-xs text-gray-400 outfit-normal mt-2">
+                            Added {friend.addedAt}
+                          </p>
+                        </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveFriend(friend.username)}
+                          className="text-red-500 outfit-normal text-xs items-center justify-center flex hover:text-red-700"
+                        >
+                          <UserMinus className="w-3 h-3 mr-1.5" />
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full -mt-5">
@@ -311,7 +329,6 @@ const Dashboard: React.FC = () => {
                   <button
                     onClick={() => setShowAddFriend(true)}
                     className="w-3/4 border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium mt-5 rounded-full py-2 px-4 flex items-center justify-center gap-2"
-
                   >
                     <UserPlus className="w-4 h-4" />
                     Add New Friend

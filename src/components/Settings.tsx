@@ -208,7 +208,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 Permanently Delete Your Account
               </h3>
               <button
-                onClick={() => setShowDeleteDialog(false)}
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setShowKebabMenu(!showKebabMenu);
+                }}
                 className="p-1 hover:bg-gray-100 rounded-full"
               >
                 <X className="w-5 h-5" />
@@ -246,9 +249,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
 
               <div className="bg-yellow-50 border border-yellow-100 rounded-lg p-4 text-xs outfit-normal text-gray-700">
                 <p className="font-medium mb-1">
-                  This action is permanent and cannot be reversed.
+                  Your data cannot be recovered once deleted.
                 </p>
-                <p>Your data cannot be recovered once deleted.</p>
               </div>
 
               <p className="text-gray-600 text-xs outfit-normal">
@@ -261,7 +263,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <button
                 onClick={() => {
                   setShowDeleteDialog(false);
-                  setShowKebabMenu(false);
+                  setShowKebabMenu(!showKebabMenu);
                 }}
                 className="px-4 py-2 outfit-medium rounded-full border border-gray-300 hover:bg-gray-50"
               >
