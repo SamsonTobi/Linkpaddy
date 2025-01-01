@@ -1,6 +1,7 @@
 import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import linkshareIllus from "../assets/linkshareIllus.png"; // Adjust the path as necessary
+import linkpaddyLogo from "../assets/linkpaddylogo.png"; // Adjust the path as necessary
 
 
 const Login: React.FC = () => {
@@ -16,7 +17,14 @@ const Login: React.FC = () => {
       <div className="w-full max-w-md space-y-8 text-center flex flex-col items-center">
         {/* Title section */}
         <div className="space-y-3 flex flex-col items-center">
-          <h1 className="text-xl font-bold outfit-bold text-gray-900 w-4/5">
+        <div className="flex items-center justify-center mb-1">
+          <img
+            src={linkpaddyLogo}
+            alt="Link sharing illustration"
+            className="max-h-9"
+          />
+        </div>
+          <h1 className="text-2xl font-bold outfit-bold text-gray-900 w-11/12">
             The easiest way to share links with your inner circle
           </h1>
           <p className="text-sm outfit-normal text-gray-500">

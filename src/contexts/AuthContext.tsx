@@ -24,7 +24,8 @@ import {
 interface SharedLink {
   id: string;
   link: string;
-  sender: string;  recipients: string[];
+  sender: string;
+  recipients: string[];
   timestamp: string;
   status: "unseen" | "opened";
 }
@@ -39,7 +40,7 @@ interface ReceivedLink {
 
 interface Friend {
   username: string;
-  displayName: string,
+  displayName: string;
   email: string;
   photoURL: string;
   addedAt: string;
@@ -93,6 +94,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let linksUnsubscribe: (() => void) | undefined;
 
     const messageListener = (message: any) => {
       if (message.type === "SIGN_IN_COMPLETE") {
@@ -150,6 +152,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             });
           }
         });
+
+        linksUnsubscribe = onSnapshot(userRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            setCurrentUser((prevUser) => {
+              if (prevUser) {
+                const updatedUser = {
+                  ...prevUser,
+                  sharedLinks: data.sharedLinks || [],
+                  receivedLinks: data.receivedLinks || [],
+                };
+                chrome.storage.local.set({ user: updatedUser });
+                return updatedUser;
+              }
+              return null;
+            });
+          }
+        });
       }
       setIsLoading(false); // Keep this outside the if condition
     });
@@ -160,6 +180,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (unsubscribe) {
         unsubscribe();
       }
+      if (linksUnsubscribe) linksUnsubscribe();
     };
   }, []);
 
@@ -195,64 +216,63 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const addFriend = async (friendUsername: string) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      const userRef = doc(db, "users", currentUser.uid);
-      const friendQuery = query(
-        collection(db, "users"),
-        where("username", "==", friendUsername)
-      );
-      const friendSnapshot = await getDocs(friendQuery);
-
-      if (friendSnapshot.empty) {
-        throw new Error("Friend not found");
+      const response = await new Promise<{ success: boolean; error?: string; newFriend?: Friend }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: "ADD_FRIEND", currentUser, friendUsername },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else if (!response) {
+              reject(new Error("No response from background script"));
+            } else {
+              resolve(response);
+            }
+          }
+        );
+      });
+  
+      if (!response.success) {
+        throw new Error(response.error || "Failed to add friend");
       }
-
-      const friendDoc = friendSnapshot.docs[0];
-      const friendData = friendDoc.data();
-      const friendRef = doc(db, "users", friendDoc.id);
-
-      const newFriend: Friend = {
-        username: friendUsername,
-        email: friendData.email || '',
-        displayName: friendData.displayName || '',
-        photoURL: friendData.photoURL || '',
-        addedAt: new Date().toISOString(),
-      };
-
-      // Add friend to user's friends list
-      await updateDoc(userRef, {
-        friends: arrayUnion(newFriend),
-      });
-
-      const currentUserFriend: Friend = {
-        username: currentUser.username || '',
-        email: currentUser.email || '',
-        displayName: currentUser.displayName || '',
-        photoURL: currentUser.photoURL || '',
-        addedAt: new Date().toISOString(),
-      };
-
-      await updateDoc(friendRef, {
-        friends: arrayUnion(currentUserFriend),
-      });
+  
+      if (!response.newFriend) {
+        throw new Error("New friend data is missing");
+      }
+  
+      const newFriend = response.newFriend;
+  
+      // Update local state with complete friend data
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
-        const updatedFriends = [...(prevUser.friends || []), newFriend];
+        const updatedFriends = [
+          ...(prevUser.friends || []),
+          {
+            username: newFriend.username,
+            displayName: newFriend.displayName,
+            email: newFriend.email,
+            photoURL: newFriend.photoURL,
+            addedAt: newFriend.addedAt
+          }
+        ];
         return { ...prevUser, friends: updatedFriends };
       });
-
-      // Update local storage
+  
+      // Update chrome storage with complete friend data
       chrome.storage.local.get(["user"], (result) => {
         if (result.user) {
           const updatedUser = {
             ...result.user,
-            friends: [...(result.user.friends || []), newFriend],
+            friends: [
+              ...(result.user.friends || []),
+              newFriend
+            ]
           };
           chrome.storage.local.set({ user: updatedUser });
         }
       });
     } catch (error) {
       console.error("Error adding friend:", error);
-      throw new Error("Failed to add friend");
+      throw error;
     }
   };
 

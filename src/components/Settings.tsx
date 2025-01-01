@@ -70,7 +70,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   return (
     <div
       className="flex flex-col h-full bg-white"
-      onClick={() => setShowKebabMenu(!showKebabMenu)}
+      onClick={() => setShowKebabMenu(false)}
     >
       <div className="flex items-center justify-between p-4 border-b">
         <div className="flex items-center gap-2">

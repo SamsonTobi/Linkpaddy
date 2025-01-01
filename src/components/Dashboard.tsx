@@ -106,6 +106,19 @@ const Dashboard: React.FC = () => {
     return `${days} ${days === 1 ? "day" : "days"}`;
   };
 
+  const formatAddedDate = (timestamp: string) => {
+    try {
+      const date = new Date(timestamp);
+      return date.toLocaleDateString('en-US', { 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      return 'Date unavailable';
+    }
+  };
+
   const handleLinkClick = async (link: any) => {
     if (link.type === "received" && link.status === "unseen") {
       try {
@@ -282,7 +295,7 @@ const Dashboard: React.FC = () => {
                   {uniqueFriends.map((friend) => (
                     <div
                       key={friend.username}
-                      className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg"
+                      className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg mb-2"
                     >
                       <div className="flex items-center gap-3 justify-between w-full">
                         <div className="flex gap-3">
@@ -293,13 +306,13 @@ const Dashboard: React.FC = () => {
                         />
                         <div>
                           <p className="font-medium text-sm outfit-medium">
-                            @{friend.displayName}
+                            {friend.displayName}
                           </p>
-                          <p className="text-sm text-gray-500 outfit-normal">
-                            {friend.username}
+                          <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
+                            @{friend.username}
                           </p>
                           <p className="text-xs text-gray-400 outfit-normal mt-2">
-                            Added {friend.addedAt}
+                          Added {formatAddedDate(friend.addedAt)}
                           </p>
                         </div>
                         </div>

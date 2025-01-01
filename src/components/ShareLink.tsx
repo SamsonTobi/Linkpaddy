@@ -12,10 +12,9 @@ import {
 interface ShareLinkProps {
   onBack: () => void;
   initialLink?: string;
-  
 }
 
-const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
+const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = "" }) => {
   const { currentUser, shareLink } = useAuth();
   const [link, setLink] = useState(initialLink);
   const [showFriendsList, setShowFriendsList] = useState(false);
@@ -85,9 +84,9 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
   };
 
   const toggleFriend = (friendUsername: string) => {
-    setSelectedFriends(prev => 
-      prev.includes(friendUsername) 
-        ? prev.filter(f => f !== friendUsername)
+    setSelectedFriends((prev) =>
+      prev.includes(friendUsername)
+        ? prev.filter((f) => f !== friendUsername)
         : [...prev, friendUsername]
     );
   };
@@ -141,7 +140,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
             <button
               type="button"
               onClick={() => setShowFriendsList(true)}
-              className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-lg gap-2 hover:bg-opacity-90 flex items-center justify-center"
+              className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-full gap-2 hover:bg-opacity-90 flex items-center justify-center"
             >
               <ExternalLink className="w-4 h-4" />
               Send to
@@ -167,29 +166,32 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = '' }) => {
                           onChange={() => toggleFriend(friend.username)}
                           className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm"
                         />
-                        {/* <span className="outfit-normal">@{friend}</span> */}
-                        <div className="flex items-center gap-2">
-                        <img 
-                          src={friend.photoURL || '/default-avatar.png'} 
-                          alt={`${friend.username}'s avatar`} 
-                          className="w-8 h-8 rounded-full object-cover"
-                        />
-                        <div>
-                          <p className="font-medium text-sm outfit-medium">{friend.displayName}</p>
-                          <p className="outfit-normal text-gray-400 -mt-1">@{friend.username}</p>
+                        <div className="flex ml-2  items-center gap-2">
+                          <img
+                            src={friend.photoURL || "/default-avatar.png"}
+                            alt={`${friend.username}'s avatar`}
+                            className="w-7 h-7 rounded-full object-cover"
+                          />
+                          <div>
+                            <p className="font-medium text-sm outfit-medium">
+                              {friend.displayName}
+                            </p>
+                            <p className="outfit-normal text-gray-400 -mt-1">
+                              @{friend.username}
+                            </p>
+                          </div>
                         </div>
-                      </div>
                       </label>
                     ))}
                   </div>
                   <div>
-                  <button
-                    type="submit"
-                    className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-lg hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center"
-                  >
-                    <Share className="w-4 h-4" />
-                    Share
-                  </button>
+                    <button
+                      type="submit"
+                      className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-full hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center"
+                    >
+                      <Share className="w-4 h-4" />
+                      Share
+                    </button>
                   </div>
                 </>
               ) : (

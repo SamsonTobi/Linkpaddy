@@ -130,7 +130,7 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
           {searchResult.username ? (
             // Existing user card
             <>
-              <p className="text-xs text-[#45A134] mb-2">✓ Found</p>
+              <p className="text-xs text-[#45A134] mb-2 outfit-normal">✓ Found</p>
               <p className="font-medium text-base">{searchResult.email}</p>
               <p className="text-sm">@{searchResult.username}</p>
               <button
@@ -144,10 +144,10 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
           ) : (
             // Invite card
             <>
-              <p className="text-xs text-gray-500 mb-1">
+              <p className="text-xs text-gray-500 mb-1 outfit-normal">
                 Looks like they haven't joined yet
               </p>
-              <p className="font-medium text-base">{searchResult.email}</p>
+              <p className="font-medium outfit-medium text-base">{searchResult.email}</p>
               <button
                 onClick={handleAddFriend}
                 className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
