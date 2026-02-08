@@ -20,11 +20,21 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ onBack }) => {
-  const { currentUser, signOut, deleteAccount } = useAuth();
+  const { currentUser, signOut, deleteAccount, updateSettings } = useAuth();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showKebabMenu, setShowKebabMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+
+  const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
+
+  const handleTogglePreviews = async () => {
+    try {
+      await updateSettings({ showLinkPreviews: !showLinkPreviews });
+    } catch (error) {
+      console.error("Failed to update preview setting:", error);
+    }
+  };
 
   const stats = useMemo(() => {
     if (!currentUser) return null;
@@ -165,6 +175,24 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </span>
               </div>
             </div>
+          </div>
+          <div className="flex items-center justify-between mt-3 pt-3 border-t">
+            <div>
+              <p className="text-sm font-medium outfit-medium text-gray-800">Show Link Previews</p>
+              <p className="text-xs text-gray-500 outfit-normal">Display website previews in link cards</p>
+            </div>
+            <button
+              onClick={handleTogglePreviews}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showLinkPreviews ? "bg-[#6C5CE7]" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  showLinkPreviews ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
           </div>
         </div>
 

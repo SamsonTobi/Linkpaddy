@@ -27,7 +27,7 @@ interface SharedLink {
   sender: string;
   recipients: string[];
   timestamp: string;
-  status: "unseen" | "opened";
+  status: "unseen" | "seen" | "opened";
 }
 
 interface ReceivedLink {
@@ -35,7 +35,7 @@ interface ReceivedLink {
   link: string;
   sender: string;
   timestamp: string;
-  status: "unseen" | "opened";
+  status: "unseen" | "seen" | "opened";
 }
 
 interface Friend {
@@ -46,11 +46,16 @@ interface Friend {
   addedAt: string;
 }
 
+interface UserSettings {
+  showLinkPreviews?: boolean;
+}
+
 interface ExtendedUser extends User {
   username?: string;
   friends?: Friend[];
   sharedLinks?: SharedLink[];
   receivedLinks?: ReceivedLink[];
+  settings?: UserSettings;
 }
 
 interface AuthContextType {
@@ -65,11 +70,12 @@ interface AuthContextType {
   shareLink: (link: string, selectedFriends: string[]) => Promise<void>;
   updateLinkStatus: (
     linkId: string,
-    status: "seen" | "opened"
+    status: "unseen" | "seen" | "opened",
   ) => Promise<void>;
-  isNewUser: boolean; // Added isNewUser property
+  isNewUser: boolean;
   completeOnboarding: () => void;
   deleteAccount: () => Promise<void>;
+  updateSettings: (settings: Partial<UserSettings>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -122,7 +128,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsLoading(false);
       } else if (message.type === "FRIEND_ADDED") {
         setCurrentUser((prevUser) =>
-          prevUser ? { ...prevUser, friends: message.friends } : null
+          prevUser ? { ...prevUser, friends: message.friends } : null,
         );
       }
     };
@@ -137,6 +143,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         // Set up real-time listener when user is loaded
         const userRef = doc(db, "users", result.user.uid);
+
+        // Fetch fresh data from Firestore immediately on popup open
+        getDoc(userRef)
+          .then((freshSnap) => {
+            if (freshSnap.exists()) {
+              const freshData = freshSnap.data();
+              setCurrentUser((prevUser) => {
+                if (prevUser) {
+                  const updatedUser = { ...prevUser, ...freshData };
+                  chrome.storage.local.set({ user: updatedUser });
+                  return updatedUser;
+                }
+                return null;
+              });
+              setIsNewUser(!!freshData.isNewUser);
+            }
+          })
+          .catch((err) => console.error("Error fetching fresh data:", err));
+
         unsubscribe = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
             const userData = doc.data();
@@ -216,7 +241,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const addFriend = async (friendUsername: string) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      const response = await new Promise<{ success: boolean; error?: string; newFriend?: Friend }>((resolve, reject) => {
+      const response = await new Promise<{
+        success: boolean;
+        error?: string;
+        newFriend?: Friend;
+      }>((resolve, reject) => {
         chrome.runtime.sendMessage(
           { type: "ADD_FRIEND", currentUser, friendUsername },
           (response) => {
@@ -227,20 +256,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             } else {
               resolve(response);
             }
-          }
+          },
         );
       });
-  
+
       if (!response.success) {
         throw new Error(response.error || "Failed to add friend");
       }
-  
+
       if (!response.newFriend) {
         throw new Error("New friend data is missing");
       }
-  
+
       const newFriend = response.newFriend;
-  
+
       // Update local state with complete friend data
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
@@ -251,21 +280,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             displayName: newFriend.displayName,
             email: newFriend.email,
             photoURL: newFriend.photoURL,
-            addedAt: newFriend.addedAt
-          }
+            addedAt: newFriend.addedAt,
+          },
         ];
         return { ...prevUser, friends: updatedFriends };
       });
-  
+
       // Update chrome storage with complete friend data
       chrome.storage.local.get(["user"], (result) => {
         if (result.user) {
           const updatedUser = {
             ...result.user,
-            friends: [
-              ...(result.user.friends || []),
-              newFriend
-            ]
+            friends: [...(result.user.friends || []), newFriend],
           };
           chrome.storage.local.set({ user: updatedUser });
         }
@@ -282,7 +308,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const userRef = doc(db, "users", currentUser.uid);
       const friendQuery = query(
         collection(db, "users"),
-        where("username", "==", friendUsername)
+        where("username", "==", friendUsername),
       );
       const friendSnapshot = await getDocs(friendQuery);
 
@@ -295,7 +321,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       await updateDoc(userRef, {
         friends: arrayRemove(
-          currentUser.friends?.find((f) => f.username === friendUsername)
+          currentUser.friends?.find((f) => f.username === friendUsername),
         ),
       });
 
@@ -303,7 +329,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         friends: arrayRemove(
           friendDoc
             .data()
-            .friends?.find((f: Friend) => f.username === currentUser.username)
+            .friends?.find((f: Friend) => f.username === currentUser.username),
         ),
       });
 
@@ -311,7 +337,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         if (!prevUser) return null;
         const updatedFriends =
           prevUser.friends?.filter(
-            (friend) => friend.username !== friendUsername
+            (friend) => friend.username !== friendUsername,
           ) || [];
         return { ...prevUser, friends: updatedFriends };
       });
@@ -323,7 +349,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             ...result.user,
             friends:
               result.user.friends?.filter(
-                (friend: Friend) => friend.username !== friendUsername
+                (friend: Friend) => friend.username !== friendUsername,
               ) || [],
           };
           chrome.storage.local.set({ user: updatedUser });
@@ -336,7 +362,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const searchUser = async (
-    searchTerm: string
+    searchTerm: string,
   ): Promise<ExtendedUser | null> => {
     try {
       const usersRef = collection(db, "users");
@@ -374,7 +400,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const updateLinkStatus = async (
     linkId: string,
-    status: "opened" | "seen"
+    status: "unseen" | "seen" | "opened",
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
@@ -385,7 +411,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (userData && userData.receivedLinks) {
         const updatedReceivedLinks = userData.receivedLinks.map(
           (link: ReceivedLink) =>
-            link.id === linkId ? { ...link, status } : link
+            link.id === linkId ? { ...link, status } : link,
         );
 
         await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
@@ -405,6 +431,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const updateSettings = async (
+    settings: Partial<{ showLinkPreviews?: boolean }>,
+  ) => {
+    if (!currentUser) throw new Error("No user logged in");
+    try {
+      const userRef = doc(db, "users", currentUser.uid);
+      const newSettings = {
+        ...currentUser.settings,
+        ...settings,
+      };
+
+      await updateDoc(userRef, { settings: newSettings });
+
+      // Update local state
+      setCurrentUser((prevUser) => {
+        if (!prevUser) return null;
+        const updatedUser = {
+          ...prevUser,
+          settings: newSettings,
+        };
+        // Update chrome storage
+        chrome.storage.local.set({ user: updatedUser });
+        return updatedUser;
+      });
+    } catch (error) {
+      console.error("Error updating settings:", error);
+      throw new Error("Failed to update settings");
+    }
+  };
+
   const completeOnboarding = () => {
     // Added completeOnboarding function
     setIsNewUser(false);
@@ -412,7 +468,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const userRef = doc(db, "users", currentUser.uid);
       updateDoc(userRef, { isNewUser: false });
       setCurrentUser((prevUser) =>
-        prevUser ? { ...prevUser, isNewUser: false } : null
+        prevUser ? { ...prevUser, isNewUser: false } : null,
       );
     }
   };
@@ -428,9 +484,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     removeFriend,
     shareLink,
     updateLinkStatus,
-    isNewUser, // Added isNewUser property
-    completeOnboarding, // Added completeOnboarding function
+    isNewUser,
+    completeOnboarding,
     deleteAccount,
+    updateSettings,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -1,7 +1,7 @@
 {
-  "name": "link-sharing-ext",
+  "name": "linkpaddy",
   "version": "1.0.0",
-  "description": "Browser extension for sharing links with friends",
+  "description": "The easiest way to share links with your inner circle",
   "main": "index.js",
   "scripts": {
     "build": "webpack --mode production",

@@ -59,7 +59,7 @@ const AppContent: React.FC = () => {
   }
 
   if (shareUrl) {
-    return <ShareLink onBack={() => setShareUrl(null)} initialLink={shareUrl} />;
+    return <ShareLink onBack={() => setShareUrl(null)} initialLink={shareUrl} skipToFriends={true} />;
   }
 
   return <Dashboard />;

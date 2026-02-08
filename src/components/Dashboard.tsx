@@ -1,16 +1,13 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   Link2,
   Users,
   Share2,
-  Eye,
-  EyeOff,
   Settings,
   Share,
   UserMinus,
   UserPlus,
-  X,
   Unlink,
   UsersRound,
 } from "lucide-react";
@@ -18,7 +15,63 @@ import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
 import AddFriend from "./AddFriend";
 
-const seenLinkIcon = (
+interface LinkPreview {
+  title?: string;
+  description?: string;
+  image?: string;
+  favicon?: string;
+  siteName?: string;
+}
+
+// Unseen icon - gray eye with slash (not seen yet)
+const unseenLinkIcon = (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="w-5 h-5"
+    width="28"
+    height="28"
+    viewBox="0 0 28 28"
+    fill="none"
+  >
+    <path
+      d="M4.667 4.667L23.333 23.333M11.847 11.907C11.294 12.478 10.962 13.219 10.962 14.039C10.962 15.743 12.336 17.117 14.039 17.117C14.859 17.117 15.6 16.785 16.171 16.232M7.583 7.82C5.425 9.393 3.85 11.52 3.5 14C4.667 18.667 8.75 22.167 14 22.167C16.275 22.167 18.375 21.467 20.125 20.3M12.25 5.95C12.817 5.867 13.4 5.833 14 5.833C19.25 5.833 23.333 9.333 24.5 14C24.183 15.167 23.683 16.233 23.042 17.183"
+      stroke="#9CA3AF"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// Seen icon - blue eye (viewed in list but not clicked)
+const viewedLinkIcon = (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    className="w-5 h-5"
+    width="28"
+    height="28"
+    viewBox="0 0 28 28"
+    fill="none"
+  >
+    <path
+      d="M11.667 14C11.667 14.6188 11.9128 15.2123 12.3504 15.6499C12.788 16.0875 13.3815 16.3333 14.0003 16.3333C14.6192 16.3333 15.2127 16.0875 15.6502 15.6499C16.0878 15.2123 16.3337 14.6188 16.3337 14C16.3337 13.3812 16.0878 12.7877 15.6502 12.3501C15.2127 11.9125 14.6192 11.6667 14.0003 11.6667C13.3815 11.6667 12.788 11.9125 12.3504 12.3501C11.9128 12.7877 11.667 13.3812 11.667 14Z"
+      stroke="#6C5CE7"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M3.5 14C6.3 9.33333 9.8 7 14 7C18.2 7 21.7 9.33333 24.5 14C21.7 18.6667 18.2 21 14 21C9.8 21 6.3 18.6667 3.5 14Z"
+      stroke="#6C5CE7"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+// Opened icon - green eye with checkmark (clicked and opened)
+const openedLinkIcon = (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     className="w-5 h-5"
@@ -51,6 +104,11 @@ const Dashboard: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<string | null>(null);
+  const [linkPreviews, setLinkPreviews] = useState<Record<string, LinkPreview>>(
+    {},
+  );
+
+  const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
 
   const sortedLinks = useMemo(() => {
     if (!currentUser) return [];
@@ -67,7 +125,7 @@ const Dashboard: React.FC = () => {
 
     return allLinks.sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
   }, [currentUser]);
 
@@ -75,6 +133,94 @@ const Dashboard: React.FC = () => {
     if (!currentUser?.friends) return [];
     return Array.from(new Set(currentUser.friends));
   }, [currentUser?.friends]);
+
+  // Fetch link previews
+  useEffect(() => {
+    if (!showLinkPreviews || sortedLinks.length === 0) return;
+
+    const fetchPreview = async (url: string) => {
+      try {
+        // Use a CORS proxy or fetch metadata via background script
+        const hostname = new URL(url).hostname;
+        const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+
+        // Try to get Open Graph data via a metadata API
+        const response = await fetch(
+          `https://api.microlink.io?url=${encodeURIComponent(url)}`,
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === "success") {
+            return {
+              title: data.data.title,
+              description: data.data.description,
+              image: data.data.image?.url,
+              favicon: data.data.logo?.url || favicon,
+              siteName: hostname.replace("www.", ""),
+            };
+          }
+        }
+
+        // Fallback to just favicon
+        return {
+          favicon,
+          siteName: hostname.replace("www.", ""),
+        };
+      } catch (error) {
+        const hostname = new URL(url).hostname;
+        return {
+          favicon: `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`,
+          siteName: hostname.replace("www.", ""),
+        };
+      }
+    };
+
+    const loadPreviews = async () => {
+      const previews: Record<string, LinkPreview> = {};
+
+      // Only load previews for links we haven't fetched yet
+      const linksToFetch = sortedLinks
+        .filter((link) => !linkPreviews[link.link])
+        .slice(0, 10); // Limit to 10 at a time
+
+      await Promise.all(
+        linksToFetch.map(async (link) => {
+          const preview = await fetchPreview(link.link);
+          previews[link.link] = preview;
+        }),
+      );
+
+      if (Object.keys(previews).length > 0) {
+        setLinkPreviews((prev) => ({ ...prev, ...previews }));
+      }
+    };
+
+    loadPreviews();
+  }, [sortedLinks, showLinkPreviews]);
+
+  // Mark unseen received links as "seen" when viewing the links tab
+  useEffect(() => {
+    if (activeTab !== "links" || !currentUser) return;
+
+    const unseenLinks = sortedLinks.filter(
+      (link) => link.type === "received" && link.status === "unseen",
+    );
+
+    unseenLinks.forEach(async (link) => {
+      try {
+        await updateLinkStatus(link.id, "seen");
+        chrome.runtime.sendMessage({
+          type: "UPDATE_LINK_STATUS",
+          linkId: link.id,
+          status: "seen",
+          senderUsername: link.sender,
+        });
+      } catch (error) {
+        console.error("Error marking link as seen:", error);
+      }
+    });
+  }, [activeTab, sortedLinks]);
 
   if (!currentUser) {
     return null;
@@ -103,24 +249,29 @@ const Dashboard: React.FC = () => {
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours} ${hours === 1 ? "hr" : "hrs"}`;
     const days = Math.floor(hours / 24);
-    return `${days} ${days === 1 ? "day" : "days"}`;
+    if (days < 30) return `${days} ${days === 1 ? "day" : "days"}`;
+    const months = Math.floor(days / 30);
+    if (months < 12)
+      return `${months} ${months === 1 ? "month" : "months"} ago`;
+    const years = Math.floor(months / 12);
+    return `${years} ${years === 1 ? "year" : "years"} ago`;
   };
 
   const formatAddedDate = (timestamp: string) => {
     try {
       const date = new Date(timestamp);
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
       });
     } catch (error) {
-      return 'Date unavailable';
+      return "Date unavailable";
     }
   };
 
   const handleLinkClick = async (link: any) => {
-    if (link.type === "received" && link.status === "unseen") {
+    if (link.type === "received" && link.status !== "opened") {
       try {
         await updateLinkStatus(link.id, "opened");
 
@@ -224,43 +375,108 @@ const Dashboard: React.FC = () => {
             {currentUser.sharedLinks &&
             currentUser.receivedLinks &&
             sortedLinks.length > 0 ? (
-              sortedLinks.map((link, index) => (
-                <div
-                  key={`${link.type}-${index}`}
-                  className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg"
-                >
-                  <Share2 className="w-5 h-5 text-gray-400" />
-                  <div className="flex-1">
-                    <a
-                      href="#"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleLinkClick(link);
-                      }}
-                      rel="noopener noreferrer"
-                      className="flex font-bold outfit-bold text-sm hover:underline mb-1"
-                    >
-                      {link.link}
-                    </a>
-                    <p className="text-xs text-gray-500 outfit-normal">
-                      {link.type === "shared"
-                        ? `You sent to ${link.recipients.join(", ")}`
-                        : `Shared by ${link.sender}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-col justify-between items-end gap-2">
-                    {link.type === "shared" &&
-                      (link.status === "unseen" ? (
-                        <EyeOff className="w-4 h-4 text-gray-400" />
+              sortedLinks.map((link, index) => {
+                const preview = linkPreviews[link.link];
+                return (
+                  <div
+                    key={`${link.type}-${index}`}
+                    className="bg-gray-50 rounded-lg overflow-hidden"
+                  >
+                    {/* Link Preview Image */}
+                    {showLinkPreviews && preview?.image && (
+                      <div
+                        className="w-full h-32 bg-gray-200 cursor-pointer"
+                        onClick={() => handleLinkClick(link)}
+                      >
+                        <img
+                          src={preview.image}
+                          alt={preview.title || "Link preview"}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-4 p-4">
+                      {/* Favicon or Icon */}
+                      {showLinkPreviews && preview?.favicon ? (
+                        <img
+                          src={preview.favicon}
+                          alt=""
+                          className="w-5 h-5 rounded"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
                       ) : (
-                        seenLinkIcon
-                      ))}
-                    <span className="text-xs text-gray-400 outfit-normal">
-                      {getTimeAgo(link.timestamp)}
-                    </span>
+                        <Share2 className="w-5 h-5 text-gray-400" />
+                      )}
+
+                      <div className="flex-1 min-w-0">
+                        {/* Title or URL */}
+                        <a
+                          href="#"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            handleLinkClick(link);
+                          }}
+                          rel="noopener noreferrer"
+                          className="block font-bold outfit-bold text-sm hover:underline mb-1 truncate"
+                        >
+                          {showLinkPreviews && preview?.title
+                            ? preview.title
+                            : link.link}
+                        </a>
+
+                        {/* Description (if available) */}
+                        {showLinkPreviews && preview?.description && (
+                          <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
+                            {preview.description}
+                          </p>
+                        )}
+
+                        {/* Site name and sharing info */}
+                        <p className="text-xs text-gray-500 outfit-normal">
+                          {showLinkPreviews && preview?.siteName && (
+                            <span className="text-gray-400">
+                              {preview.siteName} •{" "}
+                            </span>
+                          )}
+                          {link.type === "shared"
+                            ? `You sent to ${link.recipients.join(", ")}`
+                            : `Shared by ${link.sender}`}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-col justify-between items-end gap-2 flex-shrink-0">
+                        {link.type === "shared" &&
+                          (link.status === "unseen"
+                            ? unseenLinkIcon
+                            : link.status === "seen"
+                              ? viewedLinkIcon
+                              : openedLinkIcon)}
+                        {link.type === "received" &&
+                          (link.status === "unseen" ? (
+                            <span className="text-xs bg-[#6C5CE7] text-white px-2 py-0.5 rounded-full">
+                              New
+                            </span>
+                          ) : link.status === "seen" ? (
+                            viewedLinkIcon
+                          ) : (
+                            openedLinkIcon
+                          ))}
+                        <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
+                          {getTimeAgo(link.timestamp)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center h-full -mt-5">
                 <Unlink
@@ -299,22 +515,22 @@ const Dashboard: React.FC = () => {
                     >
                       <div className="flex items-center gap-3 justify-between w-full">
                         <div className="flex gap-3">
-                        <img
-                          src={friend.photoURL || "/default-avatar.png"}
-                          alt={`${friend.username}'s avatar`}
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div>
-                          <p className="font-medium text-sm outfit-medium">
-                            {friend.displayName}
-                          </p>
-                          <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
-                            @{friend.username}
-                          </p>
-                          <p className="text-xs text-gray-400 outfit-normal mt-2">
-                          Added {formatAddedDate(friend.addedAt)}
-                          </p>
-                        </div>
+                          <img
+                            src={friend.photoURL || "/default-avatar.png"}
+                            alt={`${friend.username}'s avatar`}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                          <div>
+                            <p className="font-medium text-sm outfit-medium">
+                              {friend.displayName}
+                            </p>
+                            <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
+                              @{friend.username}
+                            </p>
+                            <p className="text-xs text-gray-400 outfit-normal mt-2">
+                              Added {formatAddedDate(friend.addedAt)}
+                            </p>
+                          </div>
                         </div>
                         <button
                           onClick={() => handleRemoveFriend(friend.username)}

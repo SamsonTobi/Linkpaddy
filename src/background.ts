@@ -28,13 +28,82 @@ type SharedLink = {
   status: string;
 };
 
+// ── Badge management ──────────────────────────────────────────────
+async function updateBadge() {
+  try {
+    const result = await chrome.storage.local.get(["user"]);
+    if (result.user && result.user.receivedLinks) {
+      const unseenCount = result.user.receivedLinks.filter(
+        (link: any) => link.status === "unseen"
+      ).length;
+      if (unseenCount > 0) {
+        chrome.action.setBadgeText({ text: unseenCount.toString() });
+        chrome.action.setBadgeBackgroundColor({ color: "#EF4444" });
+      } else {
+        chrome.action.setBadgeText({ text: "" });
+      }
+    } else {
+      chrome.action.setBadgeText({ text: "" });
+    }
+  } catch (error) {
+    console.error("Error updating badge:", error);
+  }
+}
+
+async function checkForNewLinks() {
+  try {
+    const result = await chrome.storage.local.get(["user"]);
+    if (!result.user || !result.user.uid) return;
+
+    const userRef = doc(db, "users", result.user.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      const updatedUser = {
+        ...result.user,
+        receivedLinks: userData.receivedLinks || [],
+        sharedLinks: userData.sharedLinks || [],
+        friends: userData.friends || [],
+      };
+      await chrome.storage.local.set({ user: updatedUser });
+    }
+  } catch (error) {
+    console.error("Error checking for new links:", error);
+  }
+}
+
+// Update badge whenever storage changes
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "local" && changes.user) {
+    updateBadge();
+  }
+});
+
+// Periodic polling for new links
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "checkNewLinks") {
+    await checkForNewLinks();
+  }
+});
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "shareLinkMenu",
-    title: "Share this site with Link Sharing Extension",
+    title: "Share this site with LinkPaddy",
     contexts: ["page"],
   });
+  chrome.alarms.create("checkNewLinks", { periodInMinutes: 1 });
+  updateBadge();
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create("checkNewLinks", { periodInMinutes: 1 });
+  updateBadge();
+});
+
+// Initial badge check when service worker starts
+updateBadge();
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "shareLinkMenu" && tab && tab.url) {
@@ -43,6 +112,22 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       // Open the extension popup
       chrome.action.openPopup();
     });
+  }
+});
+
+// Keyboard shortcut handler
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command === "share-current-tab") {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.url && (tab.url.startsWith("http://") || tab.url.startsWith("https://"))) {
+        chrome.storage.local.set({ shareUrl: tab.url }, () => {
+          chrome.action.openPopup();
+        });
+      }
+    } catch (error) {
+      console.error("Error sharing current tab:", error);
+    }
   }
 });
 
@@ -62,6 +147,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Indicates that the response is sent asynchronously
   } else if (message.type === "SHARE_LINK") {
     shareLink(message.link, message.selectedFriends);
+  } else if (message.type === "REFRESH_DATA") {
+    checkForNewLinks()
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
   } else if (message.type === "UPDATE_LINK_STATUS") {
     const { linkId, status, senderUsername } = message;
 
@@ -82,6 +172,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
               link.id === linkId ? { ...link, status } : link
           );
           await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
+
+          // Sync local storage so badge updates even if popup is closed
+          const updatedUser = { ...currentUser, receivedLinks: updatedReceivedLinks };
+          chrome.storage.local.set({ user: updatedUser });
         }
 
         // Update sender's document
@@ -113,21 +207,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function signIn() {
   try {
-    const token = await new Promise<string>((resolve, reject) => {
-      chrome.identity.clearAllCachedAuthTokens(() => {
-        chrome.identity.getAuthToken({ interactive: true }, (token) => {
+    // Use launchWebAuthFlow for Edge compatibility
+    const redirectUri = chrome.identity.getRedirectURL();
+    const clientId = "309540318772-nsj2lle011ifcke7f3l5opp9ql9pr013.apps.googleusercontent.com";
+    const scopes = [
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "openid"
+    ].join(" ");
+
+    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    authUrl.searchParams.set("client_id", clientId);
+    authUrl.searchParams.set("redirect_uri", redirectUri);
+    authUrl.searchParams.set("response_type", "token");
+    authUrl.searchParams.set("scope", scopes);
+
+    const responseUrl = await new Promise<string>((resolve, reject) => {
+      chrome.identity.launchWebAuthFlow(
+        {
+          url: authUrl.toString(),
+          interactive: true,
+        },
+        (redirectUrl) => {
           if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
+            reject(new Error(chrome.runtime.lastError.message || "Auth flow failed"));
             return;
           }
-          if (token) {
-            resolve(token);
+          if (redirectUrl) {
+            resolve(redirectUrl);
           } else {
-            reject("Token is undefined");
+            reject(new Error("No redirect URL received"));
           }
-        });
-      });
+        }
+      );
     });
+
+    // Extract access token from the redirect URL
+    const url = new URL(responseUrl.replace("#", "?"));
+    const token = url.searchParams.get("access_token");
+    
+    if (!token) {
+      throw new Error("No access token in response");
+    }
 
     const response = await fetch(
       "https://www.googleapis.com/oauth2/v3/userinfo",
@@ -135,8 +256,14 @@ async function signIn() {
         headers: { Authorization: `Bearer ${token}` },
       }
     );
+    
+    if (!response.ok) {
+      throw new Error("Failed to fetch user info");
+    }
+    
     const userInfo = await response.json();
 
+    // Use the access token with GoogleAuthProvider
     const credential = GoogleAuthProvider.credential(null, token);
     const result = await signInWithCredential(auth, credential);
     const user = result.user;
@@ -200,32 +327,15 @@ async function signIn() {
 
 async function handleSignOut() {
   try {
+    chrome.action.setBadgeText({ text: "" });
     await firebaseSignOut(auth);
 
-    chrome.identity.getAuthToken(
-      { interactive: false },
-      async function (token) {
-        if (token) {
-          await fetch(
-            `https://accounts.google.com/o/oauth2/revoke?token=${token}`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-              },
-            }
-          );
-
-          chrome.identity.removeCachedAuthToken({ token }, () => {
-            chrome.identity.clearAllCachedAuthTokens(() => {
-              chrome.storage.local.clear(() => {
-                chrome.runtime.sendMessage({ type: "SIGN_OUT_COMPLETE" });
-              });
-            });
-          });
-        }
-      }
-    );
+    // Clear all cached auth tokens and local storage
+    chrome.identity.clearAllCachedAuthTokens(() => {
+      chrome.storage.local.clear(() => {
+        chrome.runtime.sendMessage({ type: "SIGN_OUT_COMPLETE" });
+      });
+    });
   } catch (error) {
     console.error("Sign-out error:", error);
     chrome.runtime.sendMessage({
