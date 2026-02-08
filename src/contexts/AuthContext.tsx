@@ -404,9 +404,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
+      // Update receiver's receivedLinks
       const userRef = doc(db, "users", currentUser.uid);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data();
+      const userSnap = await getDoc(userRef);
+      const userData = userSnap.data();
 
       if (userData && userData.receivedLinks) {
         const updatedReceivedLinks = userData.receivedLinks.map(
@@ -419,10 +420,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Update local state
         setCurrentUser((prevUser) => {
           if (!prevUser) return null;
-          return {
+          const updatedUser = {
             ...prevUser,
             receivedLinks: updatedReceivedLinks,
           };
+          chrome.storage.local.set({ user: updatedUser });
+          return updatedUser;
         });
       }
     } catch (error) {

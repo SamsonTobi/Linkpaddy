@@ -93,13 +93,31 @@ chrome.runtime.onInstalled.addListener(() => {
     title: "Share this site with LinkPaddy",
     contexts: ["page"],
   });
-  chrome.alarms.create("checkNewLinks", { periodInMinutes: 1 });
+  chrome.alarms.create("checkNewLinks", { periodInMinutes: 0.5 });
   updateBadge();
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  chrome.alarms.create("checkNewLinks", { periodInMinutes: 1 });
+  chrome.alarms.create("checkNewLinks", { periodInMinutes: 0.5 });
   updateBadge();
+});
+
+// Refresh data when popup connects (user opens the extension)
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "popup") {
+    console.log("Popup opened, refreshing data...");
+    checkForNewLinks();
+
+    // Keep refreshing while popup is open (every 5 seconds)
+    const intervalId = setInterval(() => {
+      checkForNewLinks();
+    }, 5000);
+
+    port.onDisconnect.addListener(() => {
+      console.log("Popup closed, stopping live refresh");
+      clearInterval(intervalId);
+    });
+  }
 });
 
 // Initial badge check when service worker starts
@@ -178,25 +196,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           chrome.storage.local.set({ user: updatedUser });
         }
 
-        // Update sender's document
-        const senderQuery = query(
-          collection(db, "users"),
-          where("username", "==", senderUsername)
-        );
-        const senderSnapshot = await getDocs(senderQuery);
+        // Update sender's sharedLinks using friend UID from local friends list
+        const friends: any[] = currentUser.friends || [];
+        const sender = friends.find((f: any) => f.username === senderUsername);
+        
+        if (sender && sender.uid) {
+          console.log(`Updating sender ${senderUsername} (uid: ${sender.uid}) sharedLinks status`);
+          try {
+            const senderRef = doc(db, "users", sender.uid);
+            const senderSnap = await getDoc(senderRef);
+            
+            if (!senderSnap.exists()) {
+              console.error(`Sender doc does not exist for uid: ${sender.uid}`);
+            } else {
+              const senderData = senderSnap.data();
+              console.log(`Sender doc read success. sharedLinks count: ${(senderData.sharedLinks || []).length}`);
 
-        if (!senderSnapshot.empty) {
-          const senderDoc = senderSnapshot.docs[0];
-          const senderRef = doc(db, "users", senderDoc.id);
-          const senderData = senderDoc.data();
-
-          if (senderData && senderData.sharedLinks) {
-            const updatedSharedLinks = senderData.sharedLinks.map(
-              (link: { id: any }) =>
-                link.id === linkId ? { ...link, status } : link
-            );
-            await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
+              if (senderData && senderData.sharedLinks) {
+                const updatedSharedLinks = senderData.sharedLinks.map(
+                  (link: { id: any }) =>
+                    link.id === linkId ? { ...link, status } : link
+                );
+                await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
+                console.log(`Sender sharedLinks status updated to ${status} for linkId ${linkId}`);
+              } else {
+                console.error("Sender has no sharedLinks array");
+              }
+            }
+          } catch (senderError) {
+            console.error("Error updating sender's sharedLinks:", senderError);
           }
+        } else {
+          console.error(`Sender ${senderUsername} not found in local friends list. Friends:`, JSON.stringify(friends.map((f: any) => f.username)));
         }
       } catch (error) {
         console.error("Error updating link status:", error);
@@ -529,51 +560,86 @@ async function addFriend(
 }
 
 async function shareLink(link: string, selectedFriends: string[]) {
+  console.log("=== SHARE_LINK CALLED ===");
+  console.log("Link:", link);
+  console.log("Selected friends:", selectedFriends);
+  
   try {
     const userDataRaw = await new Promise<{ [key: string]: any }>((resolve) => {
       chrome.storage.local.get(["user"], (result) => resolve(result.user));
     });
 
+    console.log("Current user:", userDataRaw?.username, userDataRaw?.uid);
+
     if (!userDataRaw) throw new Error("No user logged in");
 
-    const linkId = Date.now().toString(); // Generate unique ID
+    const linkId = Date.now().toString();
+    const timestamp = new Date().toISOString();
 
     const sharedLinkData = {
       id: linkId,
       link,
       sender: userDataRaw.username,
-      timestamp: new Date().toISOString(),
+      timestamp,
       recipients: selectedFriends,
       status: "unseen",
     };
 
-    // Add shared link to sender's shared links
+    // Look up friend UIDs from the local friends list (avoids Firestore read permission issue)
+    const friends: any[] = userDataRaw.friends || [];
+    const friendRefs: { ref: any; username: string }[] = [];
+
+    for (const friendUsername of selectedFriends) {
+      const friend = friends.find((f: any) => f.username === friendUsername);
+      if (friend && friend.uid) {
+        console.log(`Found friend locally: ${friendUsername} -> uid: ${friend.uid}`);
+        friendRefs.push({
+          ref: doc(db, "users", friend.uid),
+          username: friendUsername,
+        });
+      } else {
+        console.error(`Friend ${friendUsername} not found in local friends list`);
+      }
+    }
+
+    console.log(`Total friends resolved: ${friendRefs.length} of ${selectedFriends.length}`);
+
+    // Update sender's sharedLinks
     const userRef = doc(db, "users", userDataRaw.uid);
     await updateDoc(userRef, {
       sharedLinks: arrayUnion(sharedLinkData),
     });
+    console.log("Sender sharedLinks updated");
 
-    // Add shared link to each recipient's received links
-    for (const friendUsername of selectedFriends) {
-      const friendQuery = query(
-        collection(db, "users"),
-        where("username", "==", friendUsername)
-      );
-      const friendSnapshot = await getDocs(friendQuery);
-      if (!friendSnapshot.empty) {
-        const friendDoc = friendSnapshot.docs[0];
-        const friendRef = doc(db, "users", friendDoc.id);
+    // Update each recipient's receivedLinks individually
+    for (const { ref, username } of friendRefs) {
+      const receivedLinkData = {
+        id: linkId,
+        link,
+        sender: userDataRaw.username,
+        timestamp,
+        status: "unseen",
+      };
 
-        const receivedLinkData = {
-          ...sharedLinkData,
-          type: "received",
-        };
-
-        await updateDoc(friendRef, {
-          receivedLinks: arrayUnion(receivedLinkData),
-        });
-      }
+      console.log(`Updating receivedLinks for ${username}:`, JSON.stringify(receivedLinkData));
+      await updateDoc(ref, {
+        receivedLinks: arrayUnion(receivedLinkData),
+      });
+      console.log(`receivedLinks updated for ${username}`);
     }
+
+    console.log("All writes completed successfully!");
+    
+    // Update local storage with the new shared link
+    const updatedUser = {
+      ...userDataRaw,
+      sharedLinks: [...(userDataRaw.sharedLinks || []), sharedLinkData],
+    };
+    chrome.storage.local.set({ user: updatedUser });
+
+    chrome.runtime.sendMessage({
+      type: "SHARE_LINK_SUCCESS",
+    });
   } catch (error) {
     console.error("Error sharing link:", error);
     chrome.runtime.sendMessage({

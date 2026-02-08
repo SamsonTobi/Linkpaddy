@@ -10,6 +10,8 @@ import {
   UserPlus,
   Unlink,
   UsersRound,
+  Filter,
+  ChevronDown,
 } from "lucide-react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
@@ -100,6 +102,9 @@ const openedLinkIcon = (
 const Dashboard: React.FC = () => {
   const { currentUser, updateLinkStatus, removeFriend } = useAuth();
   const [activeTab, setActiveTab] = useState<"links" | "friends">("links");
+  const [linkFilter, setLinkFilter] = useState<"all" | "sent" | "received">(
+    "all",
+  );
   const [showShareLink, setShowShareLink] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
@@ -128,6 +133,27 @@ const Dashboard: React.FC = () => {
         new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
   }, [currentUser]);
+
+  // Filter links based on selected filter
+  const filteredLinks = useMemo(() => {
+    if (linkFilter === "all") return sortedLinks;
+    if (linkFilter === "sent")
+      return sortedLinks.filter((link) => link.type === "shared");
+    return sortedLinks.filter((link) => link.type === "received");
+  }, [sortedLinks, linkFilter]);
+
+  // Separate unseen received links
+  const unseenReceivedLinks = useMemo(() => {
+    return filteredLinks.filter(
+      (link) => link.type === "received" && link.status === "unseen",
+    );
+  }, [filteredLinks]);
+
+  const otherLinks = useMemo(() => {
+    return filteredLinks.filter(
+      (link) => !(link.type === "received" && link.status === "unseen"),
+    );
+  }, [filteredLinks]);
 
   const uniqueFriends = useMemo(() => {
     if (!currentUser?.friends) return [];
@@ -344,29 +370,50 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex gap-2 p-4">
-        <button
-          onClick={() => setActiveTab("links")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal ${
-            activeTab === "links"
-              ? "bg-gray-900 text-white font-medium outfit-medium"
-              : "bg-gray-100 text-gray-700"
-          }`}
-        >
-          <Link2 className="w-4 h-4" />
-          Links Dashboard
-        </button>
-        <button
-          onClick={() => setActiveTab("friends")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal ${
-            activeTab === "friends"
-              ? "bg-gray-900 text-white font-medium outfit-medium"
-              : "bg-gray-100 text-gray-700"
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          Your Sharing Circle
-        </button>
+      <div className="flex gap-2 p-4 justify-between items-center">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab("links")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal ${
+              activeTab === "links"
+                ? "bg-gray-900 text-white font-medium outfit-medium"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            <Link2 className="w-4 h-4" />
+            Links Dashboard
+          </button>
+          <button
+            onClick={() => setActiveTab("friends")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal ${
+              activeTab === "friends"
+                ? "bg-gray-900 text-white font-medium outfit-medium"
+                : "bg-gray-100 text-gray-700"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Your Sharing Circle
+          </button>
+        </div>
+
+        {/* Filter dropdown - only show when on links tab */}
+        {activeTab === "links" && (
+          <div className="relative flex items-center gap-1 text-sm text-gray-600">
+            <Filter className="w-4 h-4" />
+            <select
+              value={linkFilter}
+              onChange={(e) =>
+                setLinkFilter(e.target.value as "all" | "sent" | "received")
+              }
+              className="appearance-none bg-transparent pr-5 py-1 outfit-normal cursor-pointer focus:outline-none"
+            >
+              <option value="all">All</option>
+              <option value="sent">Sent</option>
+              <option value="received">Received</option>
+            </select>
+            <ChevronDown className="w-4 h-4 absolute right-0 pointer-events-none" />
+          </div>
+        )}
       </div>
 
       <div className="flex-1 p-4 pt-0 overflow-auto">
@@ -374,109 +421,197 @@ const Dashboard: React.FC = () => {
           <div className="space-y-3 h-full">
             {currentUser.sharedLinks &&
             currentUser.receivedLinks &&
-            sortedLinks.length > 0 ? (
-              sortedLinks.map((link, index) => {
-                const preview = linkPreviews[link.link];
-                return (
-                  <div
-                    key={`${link.type}-${index}`}
-                    className="bg-gray-50 rounded-lg overflow-hidden"
-                  >
-                    {/* Link Preview Image */}
-                    {showLinkPreviews && preview?.image && (
-                      <div
-                        className="w-full h-32 bg-gray-200 cursor-pointer"
-                        onClick={() => handleLinkClick(link)}
-                      >
-                        <img
-                          src={preview.image}
-                          alt={preview.title || "Link preview"}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
-                          }}
-                        />
+            filteredLinks.length > 0 ? (
+              <>
+                {/* Unseen section - only show if there are unseen received links */}
+                {unseenReceivedLinks.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 pt-2 pb-1">
+                      <span className="w-2 h-2 rounded-full bg-[#6C5CE7]"></span>
+                      <h3 className="text-sm font-semibold outfit-semibold text-gray-700">
+                        Unseen
+                      </h3>
+                    </div>
+                    {unseenReceivedLinks.map((link, index) => {
+                      const preview = linkPreviews[link.link];
+                      return (
+                        <div
+                          key={`unseen-${link.type}-${index}`}
+                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors relative"
+                          onClick={() => handleLinkClick(link)}
+                        >
+                          {/* Blue dot indicator */}
+                          <div className="absolute top-3 left-3 w-2 h-2 rounded-full bg-[#6C5CE7] z-10"></div>
+
+                          {/* Link Preview Image */}
+                          {showLinkPreviews && preview?.image && (
+                            <div className="w-full h-32 bg-gray-200">
+                              <img
+                                src={preview.image}
+                                alt={preview.title || "Link preview"}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-4 p-4">
+                            {/* Favicon or Icon */}
+                            {showLinkPreviews && preview?.favicon ? (
+                              <img
+                                src={preview.favicon}
+                                alt=""
+                                className="w-5 h-5 rounded"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            ) : (
+                              <Share2 className="w-5 h-5 text-gray-400" />
+                            )}
+
+                            <div className="flex-1 min-w-0">
+                              <p className="block font-bold outfit-bold text-sm mb-1 truncate">
+                                {showLinkPreviews && preview?.title
+                                  ? preview.title
+                                  : link.link}
+                              </p>
+
+                              {showLinkPreviews && preview?.description && (
+                                <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
+                                  {preview.description}
+                                </p>
+                              )}
+
+                              <p className="text-xs text-gray-500 outfit-normal">
+                                {showLinkPreviews && preview?.siteName && (
+                                  <span className="text-gray-400">
+                                    {preview.siteName} •{" "}
+                                  </span>
+                                )}
+                                Shared by {link.sender}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-col justify-between items-end gap-2 flex-shrink-0">
+                              <span className="text-xs bg-[#6C5CE7] text-white px-2 py-0.5 rounded-full">
+                                New
+                              </span>
+                              <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
+                                {getTimeAgo(link.timestamp)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Other links section */}
+                {otherLinks.length > 0 && (
+                  <>
+                    {unseenReceivedLinks.length > 0 && (
+                      <div className="flex items-center gap-2 pt-3 pb-1">
+                        <h3 className="text-sm font-semibold outfit-semibold text-gray-700">
+                          {linkFilter === "all"
+                            ? "All Links"
+                            : linkFilter === "sent"
+                              ? "Sent Links"
+                              : "Received Links"}
+                        </h3>
                       </div>
                     )}
-
-                    <div className="flex items-center gap-4 p-4">
-                      {/* Favicon or Icon */}
-                      {showLinkPreviews && preview?.favicon ? (
-                        <img
-                          src={preview.favicon}
-                          alt=""
-                          className="w-5 h-5 rounded"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display =
-                              "none";
-                          }}
-                        />
-                      ) : (
-                        <Share2 className="w-5 h-5 text-gray-400" />
-                      )}
-
-                      <div className="flex-1 min-w-0">
-                        {/* Title or URL */}
-                        <a
-                          href="#"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            handleLinkClick(link);
-                          }}
-                          rel="noopener noreferrer"
-                          className="block font-bold outfit-bold text-sm hover:underline mb-1 truncate"
+                    {otherLinks.map((link, index) => {
+                      const preview = linkPreviews[link.link];
+                      return (
+                        <div
+                          key={`${link.type}-${index}`}
+                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors"
+                          onClick={() => handleLinkClick(link)}
                         >
-                          {showLinkPreviews && preview?.title
-                            ? preview.title
-                            : link.link}
-                        </a>
-
-                        {/* Description (if available) */}
-                        {showLinkPreviews && preview?.description && (
-                          <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
-                            {preview.description}
-                          </p>
-                        )}
-
-                        {/* Site name and sharing info */}
-                        <p className="text-xs text-gray-500 outfit-normal">
-                          {showLinkPreviews && preview?.siteName && (
-                            <span className="text-gray-400">
-                              {preview.siteName} •{" "}
-                            </span>
+                          {/* Link Preview Image */}
+                          {showLinkPreviews && preview?.image && (
+                            <div className="w-full h-32 bg-gray-200">
+                              <img
+                                src={preview.image}
+                                alt={preview.title || "Link preview"}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            </div>
                           )}
-                          {link.type === "shared"
-                            ? `You sent to ${link.recipients.join(", ")}`
-                            : `Shared by ${link.sender}`}
-                        </p>
-                      </div>
 
-                      <div className="flex flex-col justify-between items-end gap-2 flex-shrink-0">
-                        {link.type === "shared" &&
-                          (link.status === "unseen"
-                            ? unseenLinkIcon
-                            : link.status === "seen"
-                              ? viewedLinkIcon
-                              : openedLinkIcon)}
-                        {link.type === "received" &&
-                          (link.status === "unseen" ? (
-                            <span className="text-xs bg-[#6C5CE7] text-white px-2 py-0.5 rounded-full">
-                              New
-                            </span>
-                          ) : link.status === "seen" ? (
-                            viewedLinkIcon
-                          ) : (
-                            openedLinkIcon
-                          ))}
-                        <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
-                          {getTimeAgo(link.timestamp)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+                          <div className="flex items-center gap-4 p-4">
+                            {/* Favicon or Icon */}
+                            {showLinkPreviews && preview?.favicon ? (
+                              <img
+                                src={preview.favicon}
+                                alt=""
+                                className="w-5 h-5 rounded"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display =
+                                    "none";
+                                }}
+                              />
+                            ) : (
+                              <Share2 className="w-5 h-5 text-gray-400" />
+                            )}
+
+                            <div className="flex-1 min-w-0">
+                              <p className="block font-bold outfit-bold text-sm mb-1 truncate">
+                                {showLinkPreviews && preview?.title
+                                  ? preview.title
+                                  : link.link}
+                              </p>
+
+                              {showLinkPreviews && preview?.description && (
+                                <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
+                                  {preview.description}
+                                </p>
+                              )}
+
+                              <p className="text-xs text-gray-500 outfit-normal">
+                                {showLinkPreviews && preview?.siteName && (
+                                  <span className="text-gray-400">
+                                    {preview.siteName} •{" "}
+                                  </span>
+                                )}
+                                {link.type === "shared"
+                                  ? `You sent to ${link.recipients.join(", ")}`
+                                  : `Shared by ${link.sender}`}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-col justify-between items-end gap-2 flex-shrink-0">
+                              {link.type === "shared" &&
+                                (link.status === "unseen"
+                                  ? unseenLinkIcon
+                                  : link.status === "seen"
+                                    ? viewedLinkIcon
+                                    : openedLinkIcon)}
+                              {link.type === "received" &&
+                                (link.status === "seen"
+                                  ? viewedLinkIcon
+                                  : openedLinkIcon)}
+                              <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
+                                {getTimeAgo(link.timestamp)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full -mt-5">
                 <Unlink
