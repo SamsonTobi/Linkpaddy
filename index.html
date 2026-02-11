@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LinkPaddy - Share Links with Friends</title>
+    <meta
+      name="description"
+      content="The easiest way to share links with your inner circle"
+    />
+    <style>
+      :root {
+        --bg: #0f172a;
+        --surface: #ffffff;
+        --text: #0f172a;
+        --muted: #475569;
+        --accent: #6c5ce7;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: var(--text);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 600px;
+        text-align: center;
+        background: var(--surface);
+        border-radius: 24px;
+        padding: 48px 32px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      h1 {
+        margin: 0 0 16px 0;
+        font-size: 48px;
+        color: var(--accent);
+      }
+
+      p {
+        font-size: 18px;
+        color: var(--muted);
+        line-height: 1.6;
+        margin: 0 0 32px 0;
+      }
+
+      .button {
+        display: inline-block;
+        background: var(--accent);
+        color: white;
+        padding: 14px 32px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: 600;
+        transition:
+          transform 0.2s,
+          opacity 0.2s;
+        margin: 8px;
+      }
+
+      .button:hover {
+        transform: translateY(-2px);
+        opacity: 0.9;
+      }
+
+      .button-secondary {
+        background: transparent;
+        color: var(--muted);
+        border: 2px solid #e2e8f0;
+      }
+
+      .button-secondary:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+
+      footer {
+        margin-top: 32px;
+        padding-top: 24px;
+        border-top: 1px solid #e2e8f0;
+      }
+
+      footer a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 14px;
+        margin: 0 12px;
+      }
+
+      footer a:hover {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>LinkPaddy</h1>
+      <p>The easiest way to share links with your inner circle</p>
+
+      <div>
+        <a href="https://microsoftedge.microsoft.com/addons" class="button">
+          Get Extension
+        </a>
+        <a href="/privacy.html" class="button button-secondary">
+          Privacy Policy
+        </a>
+      </div>
+
+      <footer>
+        <a href="/privacy.html">Privacy</a>
+        <a href="mailto:support@linkpaddy.com">Contact</a>
+      </footer>
+    </div>
+  </body>
+</html>

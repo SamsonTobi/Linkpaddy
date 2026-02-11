@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "LinkPaddy"
+  },
+  "extensionDescription": {
+    "message": "The easiest way to share links with your inner circle"
+  },
+  "extensionActionTitle": {
+    "message": "Link Sharing Extension"
+  },
+  "shareCurrentTabCommand": {
+    "message": "Share current tab with LinkPaddy"
+  }
+}
