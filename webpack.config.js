@@ -52,6 +52,12 @@ module.exports = {
       patterns: [
         { from: "public/manifest.json", to: "manifest.json" },
         { from: "public/_locales", to: "_locales" },
+        { from: "public/privacy.html", to: "privacy.html" },
+        { from: "public/auth.html", to: "auth.html" },
+        {
+          from: "public/google4e2e59a478b74072.html",
+          to: "google4e2e59a478b74072.html",
+        },
       ],
     }),
   ],

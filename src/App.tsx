@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { AuthProvider } from "./contexts/AuthContext";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
+import LandingPage from "./components/LandingPage";
 import { useAuth } from "./contexts/AuthContext";
 import { Loader } from "lucide-react";
 import Onboarding from "./components/Onboarding";
@@ -19,7 +20,16 @@ const AppContent: React.FC = () => {
   const [showContent, setShowContent] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
 
+  // Check if we run as a webpage or extension
+  const isWebPage =
+    typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.id;
+
   useEffect(() => {
+    if (isWebPage) {
+      setShowContent(true);
+      return;
+    }
+
     // Connect to background script to enable live refresh while popup is open
     const port = chrome.runtime.connect({ name: "popup" });
 
@@ -80,6 +90,13 @@ const AppContent: React.FC = () => {
 };
 
 const App: React.FC = () => {
+  const isWebPage =
+    typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.id;
+
+  if (isWebPage) {
+    return <LandingPage />;
+  }
+
   return (
     <div style={{ width: "450px", height: "550px" }}>
       <AuthProvider>
