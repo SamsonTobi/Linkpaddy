@@ -1,6 +1,6 @@
 {
   "name": "linkpaddy",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "The easiest way to share links with your inner circle",
   "main": "index.js",
   "scripts": {
@@ -32,4 +32,3 @@
     "copy-webpack-plugin": "^11.0.0"
   }
 }
-
