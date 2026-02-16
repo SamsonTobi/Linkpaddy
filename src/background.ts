@@ -34,7 +34,7 @@ async function updateBadge() {
     const result = await chrome.storage.local.get(["user"]);
     if (result.user && result.user.receivedLinks) {
       const unseenCount = result.user.receivedLinks.filter(
-        (link: any) => link.status === "unseen"
+        (link: any) => link.status === "unseen",
       ).length;
       if (unseenCount > 0) {
         chrome.action.setBadgeText({ text: unseenCount.toString() });
@@ -60,9 +60,23 @@ async function checkForNewLinks() {
 
     if (userSnap.exists()) {
       const userData = userSnap.data();
+      const oldReceivedLinks: SharedLink[] = result.user.receivedLinks || [];
+      const newReceivedLinks: SharedLink[] = userData.receivedLinks || [];
+
+      // Find truly new links by comparing IDs
+      const oldLinkIds = new Set(oldReceivedLinks.map((l) => l.id));
+      const brandNewLinks = newReceivedLinks.filter(
+        (l) => !oldLinkIds.has(l.id) && l.status === "unseen",
+      );
+
+      // Show a notification for each new link received
+      for (const newLink of brandNewLinks) {
+        showLinkNotification(newLink);
+      }
+
       const updatedUser = {
         ...result.user,
-        receivedLinks: userData.receivedLinks || [],
+        receivedLinks: newReceivedLinks,
         sharedLinks: userData.sharedLinks || [],
         friends: userData.friends || [],
       };
@@ -72,6 +86,26 @@ async function checkForNewLinks() {
     console.error("Error checking for new links:", error);
   }
 }
+
+// ── Notifications ──────────────────────────────────────────────────
+function showLinkNotification(link: SharedLink) {
+  const notificationId = `link-${link.id}`;
+  chrome.notifications.create(notificationId, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: "New link from " + link.sender,
+    message: link.link,
+    priority: 2,
+  });
+}
+
+// Open the extension popup when the user clicks a notification
+chrome.notifications.onClicked.addListener((notificationId) => {
+  if (notificationId.startsWith("link-")) {
+    chrome.action.openPopup();
+    chrome.notifications.clear(notificationId);
+  }
+});
 
 // Update badge whenever storage changes
 chrome.storage.onChanged.addListener((changes, areaName) => {
@@ -137,8 +171,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "share-current-tab") {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tab?.url && (tab.url.startsWith("http://") || tab.url.startsWith("https://"))) {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (
+        tab?.url &&
+        (tab.url.startsWith("http://") || tab.url.startsWith("https://"))
+      ) {
         chrome.storage.local.set({ shareUrl: tab.url }, () => {
           chrome.action.openPopup();
         });
@@ -159,7 +199,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === "ADD_FRIEND") {
     addFriend(message.currentUser, message.friendUsername)
       .then((result) =>
-        sendResponse({ success: true, newFriend: result.newFriend })
+        sendResponse({ success: true, newFriend: result.newFriend }),
       )
       .catch((error) => sendResponse({ success: false, error: error.message }));
     return true; // Indicates that the response is sent asynchronously
@@ -187,38 +227,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (userData && userData.receivedLinks) {
           const updatedReceivedLinks = userData.receivedLinks.map(
             (link: { id: any }) =>
-              link.id === linkId ? { ...link, status } : link
+              link.id === linkId ? { ...link, status } : link,
           );
           await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
 
           // Sync local storage so badge updates even if popup is closed
-          const updatedUser = { ...currentUser, receivedLinks: updatedReceivedLinks };
+          const updatedUser = {
+            ...currentUser,
+            receivedLinks: updatedReceivedLinks,
+          };
           chrome.storage.local.set({ user: updatedUser });
         }
 
         // Update sender's sharedLinks using friend UID from local friends list
         const friends: any[] = currentUser.friends || [];
         const sender = friends.find((f: any) => f.username === senderUsername);
-        
+
         if (sender && sender.uid) {
-          console.log(`Updating sender ${senderUsername} (uid: ${sender.uid}) sharedLinks status`);
+          console.log(
+            `Updating sender ${senderUsername} (uid: ${sender.uid}) sharedLinks status`,
+          );
           try {
             const senderRef = doc(db, "users", sender.uid);
             const senderSnap = await getDoc(senderRef);
-            
+
             if (!senderSnap.exists()) {
               console.error(`Sender doc does not exist for uid: ${sender.uid}`);
             } else {
               const senderData = senderSnap.data();
-              console.log(`Sender doc read success. sharedLinks count: ${(senderData.sharedLinks || []).length}`);
+              console.log(
+                `Sender doc read success. sharedLinks count: ${(senderData.sharedLinks || []).length}`,
+              );
 
               if (senderData && senderData.sharedLinks) {
                 const updatedSharedLinks = senderData.sharedLinks.map(
                   (link: { id: any }) =>
-                    link.id === linkId ? { ...link, status } : link
+                    link.id === linkId ? { ...link, status } : link,
                 );
                 await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
-                console.log(`Sender sharedLinks status updated to ${status} for linkId ${linkId}`);
+                console.log(
+                  `Sender sharedLinks status updated to ${status} for linkId ${linkId}`,
+                );
               } else {
                 console.error("Sender has no sharedLinks array");
               }
@@ -227,7 +276,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error("Error updating sender's sharedLinks:", senderError);
           }
         } else {
-          console.error(`Sender ${senderUsername} not found in local friends list. Friends:`, JSON.stringify(friends.map((f: any) => f.username)));
+          console.error(
+            `Sender ${senderUsername} not found in local friends list. Friends:`,
+            JSON.stringify(friends.map((f: any) => f.username)),
+          );
         }
       } catch (error) {
         console.error("Error updating link status:", error);
@@ -240,11 +292,12 @@ async function signIn() {
   try {
     // Use launchWebAuthFlow for Edge compatibility
     const redirectUri = chrome.identity.getRedirectURL();
-    const clientId = "309540318772-nsj2lle011ifcke7f3l5opp9ql9pr013.apps.googleusercontent.com";
+    const clientId =
+      "309540318772-nsj2lle011ifcke7f3l5opp9ql9pr013.apps.googleusercontent.com";
     const scopes = [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile",
-      "openid"
+      "openid",
     ].join(" ");
 
     const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
@@ -261,7 +314,9 @@ async function signIn() {
         },
         (redirectUrl) => {
           if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message || "Auth flow failed"));
+            reject(
+              new Error(chrome.runtime.lastError.message || "Auth flow failed"),
+            );
             return;
           }
           if (redirectUrl) {
@@ -269,14 +324,14 @@ async function signIn() {
           } else {
             reject(new Error("No redirect URL received"));
           }
-        }
+        },
       );
     });
 
     // Extract access token from the redirect URL
     const url = new URL(responseUrl.replace("#", "?"));
     const token = url.searchParams.get("access_token");
-    
+
     if (!token) {
       throw new Error("No access token in response");
     }
@@ -285,13 +340,13 @@ async function signIn() {
       "https://www.googleapis.com/oauth2/v3/userinfo",
       {
         headers: { Authorization: `Bearer ${token}` },
-      }
+      },
     );
-    
+
     if (!response.ok) {
       throw new Error("Failed to fetch user info");
     }
-    
+
     const userInfo = await response.json();
 
     // Use the access token with GoogleAuthProvider
@@ -335,7 +390,7 @@ async function signIn() {
             photoURL: user.photoURL,
           },
         },
-        resolve
+        resolve,
       );
     });
 
@@ -406,7 +461,7 @@ async function deleteUser(uid: string) {
     if (userData.username) {
       const friendsQuery = query(
         collection(db, "users"),
-        where("friends", "array-contains", userData.username)
+        where("friends", "array-contains", userData.username),
       );
       const friendsSnapshot = await getDocs(friendsQuery);
 
@@ -414,8 +469,8 @@ async function deleteUser(uid: string) {
         friendsSnapshot.docs.map((friendDoc) =>
           updateDoc(doc(db, "users", friendDoc.id), {
             friends: arrayRemove(userData.username),
-          })
-        )
+          }),
+        ),
       );
     }
 
@@ -445,7 +500,7 @@ async function deleteUser(uid: string) {
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
           },
-        }
+        },
       );
 
       // Remove cached token
@@ -502,13 +557,13 @@ async function addFriend(
     email: any;
     photoURL: any;
   },
-  friendUsername: unknown
+  friendUsername: unknown,
 ) {
   try {
     const userRef = doc(db, "users", currentUser.uid);
     const friendQuery = query(
       collection(db, "users"),
-      where("username", "==", friendUsername)
+      where("username", "==", friendUsername),
     );
     const friendSnapshot = await getDocs(friendQuery);
 
@@ -563,7 +618,7 @@ async function shareLink(link: string, selectedFriends: string[]) {
   console.log("=== SHARE_LINK CALLED ===");
   console.log("Link:", link);
   console.log("Selected friends:", selectedFriends);
-  
+
   try {
     const userDataRaw = await new Promise<{ [key: string]: any }>((resolve) => {
       chrome.storage.local.get(["user"], (result) => resolve(result.user));
@@ -592,17 +647,23 @@ async function shareLink(link: string, selectedFriends: string[]) {
     for (const friendUsername of selectedFriends) {
       const friend = friends.find((f: any) => f.username === friendUsername);
       if (friend && friend.uid) {
-        console.log(`Found friend locally: ${friendUsername} -> uid: ${friend.uid}`);
+        console.log(
+          `Found friend locally: ${friendUsername} -> uid: ${friend.uid}`,
+        );
         friendRefs.push({
           ref: doc(db, "users", friend.uid),
           username: friendUsername,
         });
       } else {
-        console.error(`Friend ${friendUsername} not found in local friends list`);
+        console.error(
+          `Friend ${friendUsername} not found in local friends list`,
+        );
       }
     }
 
-    console.log(`Total friends resolved: ${friendRefs.length} of ${selectedFriends.length}`);
+    console.log(
+      `Total friends resolved: ${friendRefs.length} of ${selectedFriends.length}`,
+    );
 
     // Update sender's sharedLinks
     const userRef = doc(db, "users", userDataRaw.uid);
@@ -621,7 +682,10 @@ async function shareLink(link: string, selectedFriends: string[]) {
         status: "unseen",
       };
 
-      console.log(`Updating receivedLinks for ${username}:`, JSON.stringify(receivedLinkData));
+      console.log(
+        `Updating receivedLinks for ${username}:`,
+        JSON.stringify(receivedLinkData),
+      );
       await updateDoc(ref, {
         receivedLinks: arrayUnion(receivedLinkData),
       });
@@ -629,7 +693,7 @@ async function shareLink(link: string, selectedFriends: string[]) {
     }
 
     console.log("All writes completed successfully!");
-    
+
     // Update local storage with the new shared link
     const updatedUser = {
       ...userDataRaw,

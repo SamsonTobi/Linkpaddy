@@ -54,6 +54,7 @@ module.exports = {
         { from: "public/_locales", to: "_locales" },
         { from: "public/privacy.html", to: "privacy.html" },
         { from: "public/auth.html", to: "auth.html" },
+        { from: "public/icons", to: "icons" },
         {
           from: "public/google4e2e59a478b74072.html",
           to: "google4e2e59a478b74072.html",
