@@ -94,7 +94,11 @@ const App: React.FC = () => {
     typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.id;
 
   if (isWebPage) {
-    return <LandingPage />;
+    return (
+      <AuthProvider>
+        <LandingPage />
+      </AuthProvider>
+    );
   }
 
   return (
