@@ -9,17 +9,23 @@ import {
 } from "lucide-react";
 
 const LandingPage: React.FC = () => {
-  const [downloadUrl, setDownloadUrl] = React.useState("https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn");
+  const [downloadUrl, setDownloadUrl] = React.useState(
+    "https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn",
+  );
   const [browserName, setBrowserName] = React.useState("Chrome");
 
   React.useEffect(() => {
     const userAgent = window.navigator.userAgent.toLowerCase();
     if (userAgent.includes("edg/")) {
-      setDownloadUrl("https://microsoftedge.microsoft.com/addons/detail/linkpaddy/bmmebjoghmfijpdfgdmljffaanflbhdo?hl=en-US");
+      setDownloadUrl(
+        "https://microsoftedge.microsoft.com/addons/detail/linkpaddy/bmmebjoghmfijpdfgdmljffaanflbhdo?hl=en-US",
+      );
       setBrowserName("Edge");
     } else {
       // Default to Chrome link provided
-      setDownloadUrl("https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn");
+      setDownloadUrl(
+        "https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn",
+      );
       setBrowserName("Chrome");
     }
   }, []);
