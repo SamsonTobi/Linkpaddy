@@ -1,6 +1,6 @@
 {
   "name": "linkpaddy",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "The easiest way to share links with your inner circle",
   "main": "index.js",
   "scripts": {
