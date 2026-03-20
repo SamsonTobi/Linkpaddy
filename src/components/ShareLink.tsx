@@ -15,10 +15,16 @@ interface ShareLinkProps {
   skipToFriends?: boolean;
 }
 
-const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = "", skipToFriends = false }) => {
+const ShareLink: React.FC<ShareLinkProps> = ({
+  onBack,
+  initialLink = "",
+  skipToFriends = false,
+}) => {
   const { currentUser, shareLink } = useAuth();
   const [link, setLink] = useState(initialLink);
-  const [showFriendsList, setShowFriendsList] = useState(skipToFriends && !!initialLink);
+  const [showFriendsList, setShowFriendsList] = useState(
+    skipToFriends && !!initialLink,
+  );
   const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [clipboardLink, setClipboardLink] = useState<string | null>(null);
@@ -88,7 +94,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({ onBack, initialLink = "", skipToF
     setSelectedFriends((prev) =>
       prev.includes(friendUsername)
         ? prev.filter((f) => f !== friendUsername)
-        : [...prev, friendUsername]
+        : [...prev, friendUsername],
     );
   };
 

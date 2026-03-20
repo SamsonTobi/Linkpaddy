@@ -133,7 +133,9 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
         setSearchResult(null);
       }
     } catch (error) {
-      setToast({ message: "Failed to add friend", type: "error" });
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to add friend";
+      setToast({ message: errorMessage, type: "error" });
     } finally {
       // setIsLoading(false);
     }
@@ -167,6 +169,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
               type="text"
               value={searchTerm}
               onChange={handleSearchInputChange}
+              autoFocus
               placeholder="Enter email/username to find friends or send invites"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
               disabled={isLoading}
@@ -211,29 +214,29 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                       Add Friend
                     </button>
                   </>
+                ) : // Invite card
+                isValidEmail(searchResult.email) ? (
+                  <>
+                    <p className="text-xs text-gray-500 outfit-normal mb-1">
+                      Looks like they haven't joined yet
+                    </p>
+                    <p className="font-medium outfit-medium text-base">
+                      {searchResult.email}
+                    </p>
+                    <button
+                      onClick={handleAddFriend}
+                      className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+                    >
+                      <Mail className="w-4 h-4" />
+                      Send an Invite Mail
+                    </button>
+                  </>
                 ) : (
-                  // Invite card
-                  isValidEmail(searchResult.email) ? (
-                    <>
-                      <p className="text-xs text-gray-500 outfit-normal mb-1">
-                        Looks like they haven't joined yet
-                      </p>
-                      <p className="font-medium outfit-medium text-base">
-                        {searchResult.email}
-                      </p>
-                      <button
-                        onClick={handleAddFriend}
-                        className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
-                      >
-                        <Mail className="w-4 h-4" />
-                        Send an Invite Mail
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <p className="outfit-medium text-base">Oops! We couldn't find who you searched for...</p>
-                    </>
-                  )
+                  <>
+                    <p className="outfit-medium text-base">
+                      Oops! We couldn't find who you searched for...
+                    </p>
+                  </>
                 )}
               </div>
             )}

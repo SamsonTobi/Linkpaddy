@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import inviteIllus from "../assets/invite-illus.png"; // Adjust the path as necessary
 
-const inviteLink = "https://app.example.com/invite/xyz123"; // Change this value as needed
+const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
 interface SettingsProps {
   onBack: () => void;
@@ -24,7 +24,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showKebabMenu, setShowKebabMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
 
@@ -43,11 +45,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     const totalReceived = receivedLinks.length;
     const totalSent = sharedLinks.length;
     const unopenedReceived = receivedLinks.filter(
-      (link) => link.status === "unseen"
+      (link) => link.status === "unseen",
     ).length;
     const mostRecentLink = [...receivedLinks, ...sharedLinks].sort(
       (a, b) =>
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     )[0];
     return {
       totalReceived,
@@ -71,10 +73,61 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     }
   };
 
-  const copyInviteLink = () => {
-    navigator.clipboard.writeText(inviteLink);
-    setIsCopied(true);
-    setTimeout(() => setIsCopied(false), 2000);
+  const isValidEmail = (email: string) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const handleOpenInviteDialog = () => {
+    setInviteError(null);
+    setShowInviteDialog(true);
+  };
+
+  const handleSendInviteEmail = () => {
+    const recipients = inviteEmails
+      .split(/[;,\s]+/)
+      .map((email) => email.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      setInviteError("Enter at least one email address.");
+      return;
+    }
+
+    const invalidEmails = recipients.filter((email) => !isValidEmail(email));
+    if (invalidEmails.length > 0) {
+      setInviteError(`Invalid email(s): ${invalidEmails.join(", ")}`);
+      return;
+    }
+
+    const inviterName =
+      currentUser?.displayName || currentUser?.username || "Your friend";
+    const inviterUsername = currentUser?.username || "";
+    const subject = `${inviterName} invited you to LinkPaddy`;
+    const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nIf you already know your friend's email, you can also add them directly by email in the app.\n\nSee you there!`;
+    const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    const openFallback = () => {
+      try {
+        window.open(mailtoUrl, "_blank");
+      } catch (error) {
+        window.location.href = mailtoUrl;
+      }
+    };
+
+    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url: mailtoUrl }, () => {
+        if (chrome.runtime.lastError) {
+          openFallback();
+        }
+      });
+    } else {
+      openFallback();
+    }
+
+    setShowInviteDialog(false);
+    setInviteEmails("");
+    setInviteError(null);
   };
 
   return (
@@ -178,8 +231,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           </div>
           <div className="flex items-center justify-between mt-3 pt-3 border-t">
             <div>
-              <p className="text-sm font-medium outfit-medium text-gray-800">Show Link Previews</p>
-              <p className="text-xs text-gray-500 outfit-normal">Display website previews in link cards</p>
+              <p className="text-sm font-medium outfit-medium text-gray-800">
+                Show Link Previews
+              </p>
+              <p className="text-xs text-gray-500 outfit-normal">
+                Display website previews in link cards
+              </p>
             </div>
             <button
               onClick={handleTogglePreviews}
@@ -206,15 +263,11 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 Turn everyday links into shared discoveries with friends
               </p>
               <button
-                onClick={copyInviteLink}
+                onClick={handleOpenInviteDialog}
                 className="flex items-center gap-2 outfit-medium px-4 py-2 text-[#22162B] bg-white rounded-full hover:bg-gray-50"
               >
-                {isCopied ? (
-                  <Check className="w-4 h-4 text-[#45A134]" />
-                ) : (
-                  <Copy className="w-3.5 h-3.5" />
-                )}
-                {isCopied ? "Copied!" : "Copy Invite Link"}
+                <Copy className="w-3.5 h-3.5" />
+                Invite some friends
               </button>
             </div>
             <div className="w-36 absolute -bottom-1.5 right-0">
@@ -227,6 +280,66 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           </div>
         </div>
       </div>
+
+      {showInviteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold outfit-semibold text-gray-900">
+                Invite Friends By Email
+              </h3>
+              <button
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setInviteError(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 outfit-normal mb-3">
+              Enter your friends' emails. We'll open your mail app with
+              pre-written text, the extension link, and your username.
+            </p>
+
+            <textarea
+              value={inviteEmails}
+              onChange={(e) => {
+                setInviteEmails(e.target.value);
+                if (inviteError) setInviteError(null);
+              }}
+              placeholder="friend1@email.com, friend2@email.com"
+              className="w-full min-h-24 resize-none border border-gray-200 rounded-lg p-3 text-sm outfit-normal focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]"
+            />
+
+            {inviteError && (
+              <p className="text-red-500 text-xs outfit-normal mt-2">
+                {inviteError}
+              </p>
+            )}
+
+            <div className="flex gap-3 justify-end mt-5">
+              <button
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setInviteError(null);
+                }}
+                className="px-4 py-2 outfit-medium rounded-full border border-gray-300 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendInviteEmail}
+                className="px-4 py-2 bg-[#6C5CE7] outfit-semibold text-white rounded-full hover:bg-[#6051ce]"
+              >
+                Continue To Email
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">

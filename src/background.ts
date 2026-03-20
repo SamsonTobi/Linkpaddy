@@ -16,7 +16,6 @@ import {
   getDocs,
   arrayRemove,
   deleteDoc,
-  writeBatch,
 } from "firebase/firestore";
 
 type SharedLink = {
@@ -26,6 +25,16 @@ type SharedLink = {
   timestamp: string;
   recipients: string[];
   status: string;
+  kind?: "link" | "friend_added";
+};
+
+type Friend = {
+  uid?: string;
+  username?: string;
+  displayName?: string;
+  email?: string;
+  photoURL?: string;
+  addedAt?: string;
 };
 
 // ── Badge management ──────────────────────────────────────────────
@@ -34,7 +43,7 @@ async function updateBadge() {
     const result = await chrome.storage.local.get(["user"]);
     if (result.user && result.user.receivedLinks) {
       const unseenCount = result.user.receivedLinks.filter(
-        (link: any) => link.status === "unseen",
+        (link: any) => link.status === "unseen" && link.kind !== "friend_added",
       ).length;
       if (unseenCount > 0) {
         chrome.action.setBadgeText({ text: unseenCount.toString() });
@@ -55,6 +64,11 @@ async function checkForNewLinks() {
     const result = await chrome.storage.local.get(["user"]);
     if (!result.user || !result.user.uid) return;
 
+    // Avoid Firestore permission-denied loops when auth is not restored yet.
+    if (!auth.currentUser || auth.currentUser.uid !== result.user.uid) {
+      return;
+    }
+
     const userRef = doc(db, "users", result.user.uid);
     const userSnap = await getDoc(userRef);
 
@@ -62,6 +76,8 @@ async function checkForNewLinks() {
       const userData = userSnap.data();
       const oldReceivedLinks: SharedLink[] = result.user.receivedLinks || [];
       const newReceivedLinks: SharedLink[] = userData.receivedLinks || [];
+      const oldFriends: Friend[] = result.user.friends || [];
+      const newFriends: Friend[] = userData.friends || [];
 
       // Find truly new links by comparing IDs
       const oldLinkIds = new Set(oldReceivedLinks.map((l) => l.id));
@@ -69,14 +85,55 @@ async function checkForNewLinks() {
         (l) => !oldLinkIds.has(l.id) && l.status === "unseen",
       );
 
-      // Show a notification for each new link received
-      for (const newLink of brandNewLinks) {
+      const oldFriendKeys = new Set(
+        oldFriends
+          .map((f) => f.uid || f.username)
+          .filter((key): key is string => !!key),
+      );
+      const brandNewFriends = newFriends.filter((f) => {
+        const key = f.uid || f.username;
+        return !!key && !oldFriendKeys.has(key);
+      });
+
+      const brandNewShareLinks = brandNewLinks.filter(
+        (link) => link.kind !== "friend_added",
+      );
+      const brandNewFriendEvents = brandNewLinks.filter(
+        (link) => link.kind === "friend_added",
+      );
+
+      // Show a notification for each new shared link received
+      for (const newLink of brandNewShareLinks) {
         showLinkNotification(newLink);
+      }
+
+      // Friend-added events should notify once, then be marked seen.
+      for (const friendEvent of brandNewFriendEvents) {
+        showFriendNotification({ username: friendEvent.sender });
+      }
+
+      for (const newFriend of brandNewFriends) {
+        showFriendNotification(newFriend);
+      }
+
+      const normalizedReceivedLinks = newReceivedLinks.map((link) => {
+        if (link.kind === "friend_added" && link.status === "unseen") {
+          return { ...link, status: "seen" };
+        }
+        return link;
+      });
+
+      const shouldPersistSeenFriendEvents = normalizedReceivedLinks.some(
+        (link, index) => link.status !== newReceivedLinks[index]?.status,
+      );
+
+      if (shouldPersistSeenFriendEvents) {
+        await updateDoc(userRef, { receivedLinks: normalizedReceivedLinks });
       }
 
       const updatedUser = {
         ...result.user,
-        receivedLinks: newReceivedLinks,
+        receivedLinks: normalizedReceivedLinks,
         sharedLinks: userData.sharedLinks || [],
         friends: userData.friends || [],
       };
@@ -99,10 +156,37 @@ function showLinkNotification(link: SharedLink) {
   });
 }
 
+function showFriendNotification(friend: Friend) {
+  const identity = friend.uid || friend.username || Date.now().toString();
+  const friendName = friend.displayName || friend.username || "Someone";
+  const notificationId = `friend-${identity}`;
+
+  chrome.notifications.create(notificationId, {
+    type: "basic",
+    iconUrl: "icons/icon128.png",
+    title: "New friend added",
+    message: `${friendName} added you as a friend.`,
+    priority: 2,
+  });
+}
+
+function openExtensionUi() {
+  chrome.action.openPopup(() => {
+    if (!chrome.runtime.lastError) {
+      return;
+    }
+
+    chrome.tabs.create({ url: chrome.runtime.getURL("index.html") });
+  });
+}
+
 // Open the extension popup when the user clicks a notification
 chrome.notifications.onClicked.addListener((notificationId) => {
-  if (notificationId.startsWith("link-")) {
-    chrome.action.openPopup();
+  if (
+    notificationId.startsWith("link-") ||
+    notificationId.startsWith("friend-")
+  ) {
+    openExtensionUi();
     chrome.notifications.clear(notificationId);
   }
 });
@@ -162,7 +246,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     // Store the URL in local storage
     chrome.storage.local.set({ shareUrl: tab.url }, () => {
       // Open the extension popup
-      chrome.action.openPopup();
+      openExtensionUi();
     });
   }
 });
@@ -180,7 +264,7 @@ chrome.commands.onCommand.addListener(async (command) => {
         (tab.url.startsWith("http://") || tab.url.startsWith("https://"))
       ) {
         chrome.storage.local.set({ shareUrl: tab.url }, () => {
-          chrome.action.openPopup();
+          openExtensionUi();
         });
       }
     } catch (error) {
@@ -276,10 +360,39 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             console.error("Error updating sender's sharedLinks:", senderError);
           }
         } else {
-          console.error(
-            `Sender ${senderUsername} not found in local friends list. Friends:`,
-            JSON.stringify(friends.map((f: any) => f.username)),
-          );
+          try {
+            const resolvedSender =
+              await resolveFriendRefByUsername(senderUsername);
+            if (resolvedSender) {
+              console.log(
+                `Updating sender ${senderUsername} (resolved uid: ${resolvedSender.uid}) sharedLinks status`,
+              );
+
+              const senderSnap = await getDoc(resolvedSender.ref);
+              if (senderSnap.exists()) {
+                const senderData = senderSnap.data();
+                if (senderData && senderData.sharedLinks) {
+                  const updatedSharedLinks = senderData.sharedLinks.map(
+                    (link: { id: any }) =>
+                      link.id === linkId ? { ...link, status } : link,
+                  );
+                  await updateDoc(resolvedSender.ref, {
+                    sharedLinks: updatedSharedLinks,
+                  });
+                }
+              }
+            } else {
+              console.error(
+                `Sender ${senderUsername} not found in local friends list or by username lookup. Friends:`,
+                JSON.stringify(friends.map((f: any) => f.username)),
+              );
+            }
+          } catch (senderResolveError) {
+            console.error(
+              "Error resolving sender by username:",
+              senderResolveError,
+            );
+          }
         }
       } catch (error) {
         console.error("Error updating link status:", error);
@@ -549,6 +662,23 @@ async function deleteUser(uid: string) {
   }
 }
 
+async function resolveFriendRefByUsername(friendUsername: string) {
+  const friendSnapshot = await getDocs(
+    query(collection(db, "users"), where("username", "==", friendUsername)),
+  );
+
+  if (friendSnapshot.empty) {
+    return null;
+  }
+
+  const friendDoc = friendSnapshot.docs[0];
+  return {
+    ref: doc(db, "users", friendDoc.id),
+    uid: friendDoc.id,
+    username: friendUsername,
+  };
+}
+
 async function addFriend(
   currentUser: {
     uid: string;
@@ -560,12 +690,36 @@ async function addFriend(
   friendUsername: unknown,
 ) {
   try {
+    const rawFriendIdentifier =
+      typeof friendUsername === "string" ? friendUsername : "";
+    const normalizedIdentifier = rawFriendIdentifier.trim().replace(/^@/, "");
+
+    if (!normalizedIdentifier) {
+      throw new Error("Please enter a valid username or email");
+    }
+
     const userRef = doc(db, "users", currentUser.uid);
-    const friendQuery = query(
-      collection(db, "users"),
-      where("username", "==", friendUsername),
+    const userDoc = await getDoc(userRef);
+
+    if (!userDoc.exists()) {
+      throw new Error("Current user not found");
+    }
+
+    let friendSnapshot = await getDocs(
+      query(
+        collection(db, "users"),
+        where("username", "==", normalizedIdentifier),
+      ),
     );
-    const friendSnapshot = await getDocs(friendQuery);
+
+    if (friendSnapshot.empty && normalizedIdentifier.includes("@")) {
+      friendSnapshot = await getDocs(
+        query(
+          collection(db, "users"),
+          where("email", "==", normalizedIdentifier),
+        ),
+      );
+    }
 
     if (friendSnapshot.empty) {
       throw new Error("Friend not found");
@@ -575,9 +729,30 @@ async function addFriend(
     const friendData = friendDoc.data();
     const friendRef = doc(db, "users", friendDoc.id);
 
+    if (friendDoc.id === currentUser.uid) {
+      throw new Error("You cannot add yourself as a friend");
+    }
+
+    const currentUserFriends: Friend[] = userDoc.data().friends || [];
+    const existingFriend = currentUserFriends.find(
+      (f) => f.username === friendData.username,
+    );
+
+    if (existingFriend) {
+      return {
+        newFriend: {
+          username: existingFriend.username || friendData.username,
+          displayName:
+            existingFriend.displayName || friendData.displayName || "",
+          email: existingFriend.email || friendData.email || "",
+          photoURL: existingFriend.photoURL || friendData.photoURL || "",
+          addedAt: existingFriend.addedAt || new Date().toISOString(),
+        },
+      };
+    }
+
     // Create complete friend objects for both users
     const newFriendForCurrentUser = {
-      uid: friendDoc.id,
       username: friendData.username,
       displayName: friendData.displayName || "",
       email: friendData.email || "",
@@ -585,27 +760,29 @@ async function addFriend(
       addedAt: new Date().toISOString(),
     };
 
-    const currentUserAsFriend = {
-      uid: currentUser.uid,
-      username: currentUser.username,
-      displayName: currentUser.displayName || "",
-      email: currentUser.email || "",
-      photoURL: currentUser.photoURL || "",
-      addedAt: new Date().toISOString(),
-    };
-
-    // Update both users' documents atomically
-    const batch = writeBatch(db);
-
-    batch.update(userRef, {
+    // Always update current user's friend list.
+    await updateDoc(userRef, {
       friends: arrayUnion(newFriendForCurrentUser),
     });
 
-    batch.update(friendRef, {
-      friends: arrayUnion(currentUserAsFriend),
-    });
-
-    await batch.commit();
+    // Send a notification event via recipient's receivedLinks (rules allow this key).
+    try {
+      await updateDoc(friendRef, {
+        receivedLinks: arrayUnion({
+          id: `friend-${Date.now()}`,
+          link: "",
+          sender: currentUser.username,
+          timestamp: new Date().toISOString(),
+          status: "unseen",
+          kind: "friend_added",
+        }),
+      });
+    } catch (friendNotificationError) {
+      console.warn(
+        "Friend notification write blocked by Firestore rules:",
+        friendNotificationError,
+      );
+    }
 
     return { newFriend: newFriendForCurrentUser };
   } catch (error) {
@@ -655,9 +832,20 @@ async function shareLink(link: string, selectedFriends: string[]) {
           username: friendUsername,
         });
       } else {
-        console.error(
-          `Friend ${friendUsername} not found in local friends list`,
-        );
+        const resolvedFriend = await resolveFriendRefByUsername(friendUsername);
+        if (resolvedFriend) {
+          console.log(
+            `Resolved friend by username: ${friendUsername} -> uid: ${resolvedFriend.uid}`,
+          );
+          friendRefs.push({
+            ref: resolvedFriend.ref,
+            username: friendUsername,
+          });
+        } else {
+          console.error(
+            `Friend ${friendUsername} not found in local list or by username lookup`,
+          );
+        }
       }
     }
 

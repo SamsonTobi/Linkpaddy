@@ -28,6 +28,7 @@ interface SharedLink {
   recipients: string[];
   timestamp: string;
   status: "unseen" | "seen" | "opened";
+  kind?: "link" | "friend_added";
 }
 
 interface ReceivedLink {
@@ -36,6 +37,7 @@ interface ReceivedLink {
   sender: string;
   timestamp: string;
   status: "unseen" | "seen" | "opened";
+  kind?: "link" | "friend_added";
 }
 
 interface Friend {
@@ -162,39 +164,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           })
           .catch((err) => console.error("Error fetching fresh data:", err));
 
-        unsubscribe = onSnapshot(userRef, (doc) => {
-          if (doc.exists()) {
-            const userData = doc.data();
-            setCurrentUser((prevUser) => {
-              if (prevUser) {
-                const updatedUser = { ...prevUser, ...userData };
-                setIsNewUser(!!userData.isNewUser); // Update isNewUser state
-                // Update chrome storage
-                chrome.storage.local.set({ user: updatedUser });
-                return updatedUser;
-              }
-              return null;
-            });
-          }
-        });
+        unsubscribe = onSnapshot(
+          userRef,
+          (doc) => {
+            if (doc.exists()) {
+              const userData = doc.data();
+              setCurrentUser((prevUser) => {
+                if (prevUser) {
+                  const updatedUser = { ...prevUser, ...userData };
+                  setIsNewUser(!!userData.isNewUser); // Update isNewUser state
+                  // Update chrome storage
+                  chrome.storage.local.set({ user: updatedUser });
+                  return updatedUser;
+                }
+                return null;
+              });
+            }
+          },
+          (snapshotError) => {
+            console.error("User snapshot listener error:", snapshotError);
+          },
+        );
 
-        linksUnsubscribe = onSnapshot(userRef, (snapshot) => {
-          if (snapshot.exists()) {
-            const data = snapshot.data();
-            setCurrentUser((prevUser) => {
-              if (prevUser) {
-                const updatedUser = {
-                  ...prevUser,
-                  sharedLinks: data.sharedLinks || [],
-                  receivedLinks: data.receivedLinks || [],
-                };
-                chrome.storage.local.set({ user: updatedUser });
-                return updatedUser;
-              }
-              return null;
-            });
-          }
-        });
+        linksUnsubscribe = onSnapshot(
+          userRef,
+          (snapshot) => {
+            if (snapshot.exists()) {
+              const data = snapshot.data();
+              setCurrentUser((prevUser) => {
+                if (prevUser) {
+                  const updatedUser = {
+                    ...prevUser,
+                    sharedLinks: data.sharedLinks || [],
+                    receivedLinks: data.receivedLinks || [],
+                  };
+                  chrome.storage.local.set({ user: updatedUser });
+                  return updatedUser;
+                }
+                return null;
+              });
+            }
+          },
+          (snapshotError) => {
+            console.error("Links snapshot listener error:", snapshotError);
+          },
+        );
       }
       setIsLoading(false); // Keep this outside the if condition
     });
@@ -273,25 +287,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Update local state with complete friend data
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
-        const updatedFriends = [
-          ...(prevUser.friends || []),
-          {
-            username: newFriend.username,
-            displayName: newFriend.displayName,
-            email: newFriend.email,
-            photoURL: newFriend.photoURL,
-            addedAt: newFriend.addedAt,
-          },
-        ];
+        const nextFriend = {
+          username: newFriend.username,
+          displayName: newFriend.displayName,
+          email: newFriend.email,
+          photoURL: newFriend.photoURL,
+          addedAt: newFriend.addedAt,
+        };
+        const existingFriends = prevUser.friends || [];
+        const alreadyExists = existingFriends.some(
+          (friend) => friend.username === nextFriend.username,
+        );
+        const updatedFriends = alreadyExists
+          ? existingFriends.map((friend) =>
+              friend.username === nextFriend.username ? nextFriend : friend,
+            )
+          : [...existingFriends, nextFriend];
         return { ...prevUser, friends: updatedFriends };
       });
 
       // Update chrome storage with complete friend data
       chrome.storage.local.get(["user"], (result) => {
         if (result.user) {
+          const existingFriends = result.user.friends || [];
+          const alreadyExists = existingFriends.some(
+            (friend: Friend) => friend.username === newFriend.username,
+          );
           const updatedUser = {
             ...result.user,
-            friends: [...(result.user.friends || []), newFriend],
+            friends: alreadyExists
+              ? existingFriends.map((friend: Friend) =>
+                  friend.username === newFriend.username ? newFriend : friend,
+                )
+              : [...existingFriends, newFriend],
           };
           chrome.storage.local.set({ user: updatedUser });
         }
@@ -365,13 +393,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     searchTerm: string,
   ): Promise<ExtendedUser | null> => {
     try {
+      const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
+      if (!normalizedSearchTerm) return null;
+
       const usersRef = collection(db, "users");
-      let q = query(usersRef, where("username", "==", searchTerm));
+      let q = query(usersRef, where("username", "==", normalizedSearchTerm));
       let querySnapshot = await getDocs(q);
 
       if (querySnapshot.empty) {
+        q = query(
+          usersRef,
+          where("username", "==", normalizedSearchTerm.toLowerCase()),
+        );
+        querySnapshot = await getDocs(q);
+      }
+
+      if (querySnapshot.empty) {
         // If no user found by username, search by email
-        q = query(usersRef, where("email", "==", searchTerm));
+        q = query(usersRef, where("email", "==", normalizedSearchTerm));
         querySnapshot = await getDocs(q);
       }
 

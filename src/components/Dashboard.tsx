@@ -122,10 +122,12 @@ const Dashboard: React.FC = () => {
         ...link,
         type: "shared" as const,
       })),
-      ...(currentUser.receivedLinks || []).map((link) => ({
-        ...link,
-        type: "received" as const,
-      })),
+      ...(currentUser.receivedLinks || [])
+        .filter((link: any) => link.kind !== "friend_added")
+        .map((link) => ({
+          ...link,
+          type: "received" as const,
+        })),
     ];
 
     return allLinks.sort(
@@ -157,8 +159,20 @@ const Dashboard: React.FC = () => {
 
   const uniqueFriends = useMemo(() => {
     if (!currentUser?.friends) return [];
-    return Array.from(new Set(currentUser.friends));
+    const friendMap = new Map<string, (typeof currentUser.friends)[number]>();
+    currentUser.friends.forEach((friend) => {
+      if (!friend?.username) return;
+      friendMap.set(friend.username, friend);
+    });
+    return Array.from(friendMap.values());
   }, [currentUser?.friends]);
+
+  const hasNoLinks =
+    (currentUser?.sharedLinks?.length || 0) +
+      (currentUser?.receivedLinks?.length || 0) ===
+    0;
+  const hasNoFriends = uniqueFriends.length === 0;
+  const showGettingStartedPrompt = hasNoLinks && hasNoFriends;
 
   // Fetch link previews
   useEffect(() => {
@@ -398,14 +412,14 @@ const Dashboard: React.FC = () => {
 
         {/* Filter dropdown - only show when on links tab */}
         {activeTab === "links" && (
-          <div className="relative flex items-center gap-1 text-sm text-gray-600">
+          <div className="relative inline-flex items-center gap-1 text-sm text-gray-600 w-fit whitespace-nowrap">
             <Filter className="w-4 h-4" />
             <select
               value={linkFilter}
               onChange={(e) =>
                 setLinkFilter(e.target.value as "all" | "sent" | "received")
               }
-              className="appearance-none bg-transparent pr-5 py-1 outfit-normal cursor-pointer focus:outline-none"
+              className="appearance-none bg-transparent pr-5 py-0 outfit-normal cursor-pointer focus:outline-none w-auto"
             >
               <option value="all">All</option>
               <option value="sent">Sent</option>
@@ -619,11 +633,24 @@ const Dashboard: React.FC = () => {
                   className="w-16 h-16 mb-5 text-gray-300"
                 />
                 <p className="text-center text-base font-medium outfit-medium text-gray-800">
-                  No links shared yet
+                  {showGettingStartedPrompt
+                    ? "Start by adding your first friend"
+                    : "No links shared yet"}
                 </p>
                 <p className="text-center text-sm outfit-normal text-gray-500">
-                  Your shared links would appear here.
+                  {showGettingStartedPrompt
+                    ? "If you were invited, check your email for your friend's username. You can also type your friend's email directly when adding a friend."
+                    : "Your shared links would appear here."}
                 </p>
+                {showGettingStartedPrompt && (
+                  <button
+                    onClick={() => setShowAddFriend(true)}
+                    className="mt-5 border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium rounded-full py-2 px-4 flex items-center justify-center gap-2"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    Add A Friend
+                  </button>
+                )}
               </div>
             )}
           </div>
