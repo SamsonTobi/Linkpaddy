@@ -9,6 +9,21 @@ import {
 } from "lucide-react";
 
 const LandingPage: React.FC = () => {
+  const [downloadUrl, setDownloadUrl] = React.useState("https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn");
+  const [browserName, setBrowserName] = React.useState("Chrome");
+
+  React.useEffect(() => {
+    const userAgent = window.navigator.userAgent.toLowerCase();
+    if (userAgent.includes("edg/")) {
+      setDownloadUrl("https://microsoftedge.microsoft.com/addons/detail/linkpaddy/bmmebjoghmfijpdfgdmljffaanflbhdo?hl=en-US");
+      setBrowserName("Edge");
+    } else {
+      // Default to Chrome link provided
+      setDownloadUrl("https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn");
+      setBrowserName("Chrome");
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       {/* Header/Nav */}
@@ -32,7 +47,9 @@ const LandingPage: React.FC = () => {
               Privacy Policy
             </a>
             <a
-              href="https://chrome.google.com/webstore"
+              href={downloadUrl}
+              target="_blank"
+              rel="noopener noreferrer"
               className="text-gray-600 hover:text-[#6C5CE7] transition-colors"
             >
               Store
@@ -54,13 +71,13 @@ const LandingPage: React.FC = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4">
             <a
-              href="https://chrome.google.com/webstore"
+              href={downloadUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-4 bg-[#6C5CE7] text-white rounded-full font-semibold hover:bg-opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
             >
               <ExternalLink className="w-5 h-5" />
-              Add to Chrome
+              Add to {browserName}
             </a>
             <a
               href="/privacy.html"
