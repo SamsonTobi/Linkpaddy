@@ -1,15 +1,25 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth/web-extension";
+import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDdIjG8XTEYfq2eht4193fvlxFp481ZrHQ",
-  authDomain: "link-share-ext.firebaseapp.com",
-  projectId: "link-share-ext",
-  storageBucket: "link-share-ext.appspot.com",
-  messagingSenderId: "309540318772",
-  appId: "1:309540318772:web:366f2b36a81e0dc750e461"
+  apiKey: process.env.FIREBASE_API_KEY || "",
+  authDomain: process.env.FIREBASE_AUTH_DOMAIN || "",
+  projectId: process.env.FIREBASE_PROJECT_ID || "",
+  storageBucket: process.env.FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: process.env.FIREBASE_APP_ID || "",
 };
+
+const missingConfig = Object.entries(firebaseConfig)
+  .filter(([, value]) => !value)
+  .map(([key]) => key);
+
+if (missingConfig.length > 0) {
+  throw new Error(
+    `Missing Firebase config values: ${missingConfig.join(", ")}`,
+  );
+}
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
