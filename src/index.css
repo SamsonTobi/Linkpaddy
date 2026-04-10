@@ -1,55 +1,49 @@
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: "Outfit";
-  src: url("./assets/fonts/Outfit-Regular.woff2") format("woff2");
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
+:root {
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
-@font-face {
-  font-family: "Outfit";
-  src: url("./assets/fonts/Outfit-Medium.woff2") format("woff2");
-  font-weight: 500;
-  font-style: normal;
-  font-display: swap;
+html,
+body,
+#root {
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  letter-spacing: -0.01em;
 }
 
-@font-face {
-  font-family: "Outfit";
-  src: url("./assets/fonts/Outfit-SemiBold.woff2") format("woff2");
-  font-weight: 600;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Outfit";
-  src: url("./assets/fonts/Outfit-Bold.woff2") format("woff2");
-  font-weight: 700;
-  font-style: normal;
-  font-display: swap;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
 .outfit-normal {
-  font-family: "Outfit";
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 400;
 }
 
 .outfit-medium {
-  font-family: "Outfit";
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 500;
 }
 
 .outfit-semibold {
-  font-family: "Outfit";
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 600;
 }
 
 .outfit-bold {
-  font-family: "Outfit";
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 700;
 }

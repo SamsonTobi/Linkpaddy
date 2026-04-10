@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { Search, UserPlus, Check, CornerDownLeft, Mail } from "lucide-react";
+import {
+  MagnifyingGlass,
+  UserPlus,
+  Check,
+  ArrowElbowDownLeft,
+  EnvelopeSimple,
+} from "@phosphor-icons/react";
 import friendIllus from "../assets/network.png"; // Adjust the path as necessary
 
 interface OnboardingAddFriendsProps {
@@ -116,7 +122,7 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
       <div className="w-full ">
         <form onSubmit={handleSearch} className="w-full">
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#6C5CE7]">
-            <Search className="w-5 h-5 mr-3 text-gray-400" />
+            <MagnifyingGlass className="w-5 h-5 mr-3 text-gray-400" />
             <input
               type="text"
               value={searchTerm}
@@ -130,7 +136,7 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
 
         {showSearchPrompt && !isSearching && (
           <div className="flex items-center mt-2">
-            <CornerDownLeft className="w-3 h-3 mr-3 text-gray-500" />
+            <ArrowElbowDownLeft className="w-3 h-3 mr-3 text-gray-500" />
             <p className="text-xs outfit-normal text-gray-500">
               Press enter to search
             </p>
@@ -171,7 +177,7 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
                 disabled={isAdding}
                 className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Mail className="w-4 h-4" />
+                <EnvelopeSimple className="w-4 h-4" />
                 {isAdding ? "Processing..." : "Send an Invite Mail"}
               </button>
             </>

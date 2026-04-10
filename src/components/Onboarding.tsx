@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import { Users } from "lucide-react";
+import { Users } from "@phosphor-icons/react";
 import OnboardingAddFriends from "./OnboardingAddFriends";
 
 const Onboarding: React.FC = () => {

@@ -3,11 +3,11 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
   Clipboard,
-  ExternalLink,
+  ArrowSquareOut,
   Globe,
-  Link2,
+  LinkSimple,
   Share,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 interface ShareLinkProps {
   onBack: () => void;
@@ -166,7 +166,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
       <div className="p-4 flex-1">
         <form onSubmit={handleShare} className="space-y-4">
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
-            <Link2 className="w-5 h-5 mr-3 text-gray-400" />
+            <LinkSimple className="w-5 h-5 mr-3 text-gray-400" />
             <input
               type="url"
               value={link}
@@ -209,7 +209,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
               disabled={isSharing}
               className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-full gap-2 hover:bg-opacity-90 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <ExternalLink className="w-4 h-4" />
+              <ArrowSquareOut className="w-4 h-4" />
               Send to
             </button>
           ) : null}

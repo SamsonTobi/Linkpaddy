@@ -4,13 +4,13 @@ import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import LandingPage from "./components/LandingPage";
 import { useAuth } from "./contexts/AuthContext";
-import { Loader } from "lucide-react";
+import { Spinner } from "@phosphor-icons/react";
 import Onboarding from "./components/Onboarding";
 import ShareLink from "./components/ShareLink";
 
 const LoadingSpinner: React.FC = () => (
   <div className="flex flex-col gap-3 items-center justify-center h-full bg-white">
-    <Loader className="w-12 h-12 text-gray-300 animate-spin" />
+    <Spinner className="w-12 h-12 text-gray-300 animate-spin" />
     <p className="font-medium outfit-medium">Please hold on...</p>
   </div>
 );

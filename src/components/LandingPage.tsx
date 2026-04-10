@@ -1,12 +1,11 @@
 import React from "react";
 import {
-  ExternalLink,
+  ArrowSquareOut,
   Shield,
-  KeyRound,
-  Globe,
-  Share2,
+  Key,
+  ShareNetwork,
   Users,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 
 const LandingPage: React.FC = () => {
   const [downloadUrl, setDownloadUrl] = React.useState(
@@ -36,7 +35,7 @@ const LandingPage: React.FC = () => {
       <header className="bg-white shadow-sm py-4">
         <div className="container mx-auto px-4 flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <Share2 className="w-8 h-8 text-[#6C5CE7]" />
+            <ShareNetwork className="w-8 h-8 text-[#6C5CE7]" />
             <h1 className="text-2xl font-bold text-gray-900">LinkPaddy</h1>
           </div>
           <nav className="hidden md:flex items-center gap-6">
@@ -82,7 +81,7 @@ const LandingPage: React.FC = () => {
               rel="noopener noreferrer"
               className="px-8 py-4 bg-[#6C5CE7] text-white rounded-full font-semibold hover:bg-opacity-90 transition-all flex items-center justify-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
             >
-              <ExternalLink className="w-5 h-5" />
+              <ArrowSquareOut className="w-5 h-5" />
               Add to {browserName}
             </a>
             <a
@@ -101,7 +100,7 @@ const LandingPage: React.FC = () => {
             <div className="grid md:grid-cols-3 gap-8">
               <div className="p-6 bg-gray-50 rounded-2xl hover:shadow-md transition-shadow">
                 <div className="w-12 h-12 bg-[#6C5CE7] bg-opacity-10 rounded-xl flex items-center justify-center mb-4 text-[#6C5CE7]">
-                  <Share2 className="w-6 h-6" />
+                  <ShareNetwork className="w-6 h-6" />
                 </div>
                 <h3 className="text-xl font-bold mb-2">Instant Sharing</h3>
                 <p className="text-gray-600">
@@ -121,7 +120,7 @@ const LandingPage: React.FC = () => {
               </div>
               <div className="p-6 bg-gray-50 rounded-2xl hover:shadow-md transition-shadow">
                 <div className="w-12 h-12 bg-[#6C5CE7] bg-opacity-10 rounded-xl flex items-center justify-center mb-4 text-[#6C5CE7]">
-                  <KeyRound className="w-6 h-6" />
+                  <Key className="w-6 h-6" />
                 </div>
                 <h3 className="text-xl font-bold mb-2">Secure & Private</h3>
                 <p className="text-gray-600">

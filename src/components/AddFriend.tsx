@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
-  Search,
+  MagnifyingGlass,
   UserPlus,
-  CornerDownLeft,
-  Mail,
-  Loader,
-} from "lucide-react";
+  ArrowElbowDownLeft,
+  EnvelopeSimple,
+  Spinner,
+} from "@phosphor-icons/react";
 
 interface AddFriendProps {
   onBack: () => void;
@@ -26,7 +26,7 @@ interface ToastProps {
 
 const LoadingSpinner: React.FC = () => (
   <div className="flex flex-col gap-3 items-center justify-center h-full bg-white mt-7">
-    <Loader className="w-10 h-10 text-gray-300 animate-spin" />
+    <Spinner className="w-10 h-10 text-gray-300 animate-spin" />
     <p className="font-medium outfit-medium">Searching...</p>
   </div>
 );
@@ -159,7 +159,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
       <div className="p-4 flex-1">
         <form onSubmit={handleSearch}>
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
-            <Search className="w-5 h-5 mr-3 text-gray-400" />
+            <MagnifyingGlass className="w-5 h-5 mr-3 text-gray-400" />
             <input
               type="text"
               value={searchTerm}
@@ -174,7 +174,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
         {showSearchPrompt && !isSearching && (
           <div className="flex items-center mt-3">
-            <CornerDownLeft className="w-3 h-3 mr-3 text-gray-500" />
+            <ArrowElbowDownLeft className="w-3 h-3 mr-3 text-gray-500" />
             <p className="text-xs text-gray-500 outfit-normal">
               Press enter to search
             </p>
@@ -224,7 +224,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                       disabled={isAdding}
                       className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                      <Mail className="w-4 h-4" />
+                      <EnvelopeSimple className="w-4 h-4" />
                       {isAdding ? "Processing..." : "Send an Invite Mail"}
                     </button>
                   </>

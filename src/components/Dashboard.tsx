@@ -1,18 +1,18 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
-  Link2,
+  LinkSimple,
   Users,
-  Share2,
-  Settings,
+  ShareNetwork,
+  Gear,
   Share,
   UserMinus,
   UserPlus,
-  Unlink,
-  UsersRound,
-  Filter,
-  ChevronDown,
-} from "lucide-react";
+  LinkBreak,
+  UsersThree,
+  FunnelSimple,
+  CaretDown,
+} from "@phosphor-icons/react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
 import AddFriend from "./AddFriend";
@@ -397,7 +397,7 @@ const Dashboard: React.FC = () => {
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-gray-100 rounded-full"
           >
-            <Settings className="w-5 h-5" />
+            <Gear className="w-5 h-5" />
           </button>
         </div>
       </div>
@@ -412,7 +412,7 @@ const Dashboard: React.FC = () => {
                 : "bg-gray-100 text-gray-700"
             }`}
           >
-            <Link2 className="w-4 h-4" />
+            <LinkSimple className="w-4 h-4" />
             Links Dashboard
           </button>
           <button
@@ -431,7 +431,7 @@ const Dashboard: React.FC = () => {
         {/* Filter dropdown - only show when on links tab */}
         {activeTab === "links" && (
           <div className="relative inline-flex items-center gap-1 text-sm text-gray-600 w-fit whitespace-nowrap">
-            <Filter className="w-4 h-4" />
+            <FunnelSimple className="w-4 h-4" />
             <select
               value={linkFilter}
               onChange={(e) =>
@@ -443,7 +443,7 @@ const Dashboard: React.FC = () => {
               <option value="sent">Sent</option>
               <option value="received">Received</option>
             </select>
-            <ChevronDown className="w-4 h-4 absolute right-0 pointer-events-none" />
+            <CaretDown className="w-4 h-4 absolute right-0 pointer-events-none" />
           </div>
         )}
       </div>
@@ -503,7 +503,7 @@ const Dashboard: React.FC = () => {
                                 }}
                               />
                             ) : (
-                              <Share2 className="w-5 h-5 text-gray-400" />
+                              <ShareNetwork className="w-5 h-5 text-gray-400" />
                             )}
 
                             <div className="flex-1 min-w-0">
@@ -594,7 +594,7 @@ const Dashboard: React.FC = () => {
                                 }}
                               />
                             ) : (
-                              <Share2 className="w-5 h-5 text-gray-400" />
+                              <ShareNetwork className="w-5 h-5 text-gray-400" />
                             )}
 
                             <div className="flex-1 min-w-0">
@@ -646,7 +646,7 @@ const Dashboard: React.FC = () => {
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full -mt-5">
-                <Unlink
+                <LinkBreak
                   strokeWidth={1.5}
                   className="w-16 h-16 mb-5 text-gray-300"
                 />
@@ -726,7 +726,7 @@ const Dashboard: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full -mt-5">
-                  <UsersRound
+                  <UsersThree
                     strokeWidth={1.5}
                     className="w-12 h-12 mb-4 text-gray-300"
                   />

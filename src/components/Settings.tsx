@@ -2,15 +2,14 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
-  LogOut,
-  Trash2,
+  SignOut,
+  Trash,
   X,
-  MoreVertical,
+  DotsThreeVertical,
   Copy,
-  ArrowDownToDot,
-  ArrowUpFromDot,
-  Check,
-} from "lucide-react";
+  ArrowDown,
+  ArrowUp,
+} from "@phosphor-icons/react";
 import inviteIllus from "../assets/invite-illus.png"; // Adjust the path as necessary
 
 const extensionLandingLink = "https://linkpaddy.vercel.app/";
@@ -291,7 +290,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               disabled={isSigningOut || isLoading}
               className="w-full flex items-center rounded-full justify-center gap-2 py-2 px-4 text-red-500 bg-red-50 outfit-semibold disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <SignOut className="w-3.5 h-3.5" />
               {isSigningOut || isLoading ? "Logging out..." : "Logout"}
             </button>
 
@@ -299,7 +298,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               onClick={() => setShowKebabMenu(!showKebabMenu)}
               className="p-2 hover:bg-gray-100 rounded-full"
             >
-              <MoreVertical className="w-5 h-5" />
+              <DotsThreeVertical className="w-5 h-5" />
             </button>
             {showKebabMenu && (
               <div className="absolute right-0 mt-20 w-40 bg-white rounded-lg shadow-lg border">
@@ -310,7 +309,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                   }}
                   className="w-full flex gap-2 text-left px-4 outfit-normal py-2 text-red-600 hover:text-red-800"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash className="w-3.5 h-3.5" />
                   Delete account
                 </button>
               </div>
@@ -330,7 +329,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </span>
                 <span className="flex items-center text-gray-600 outfit-normal">
                   Sent
-                  <ArrowUpFromDot strokeWidth={1.7} className="w-3 h-3 ml-1" />
+                  <ArrowUp strokeWidth={1.7} className="w-3 h-3 ml-1" />
                 </span>
               </div>
             </div>
@@ -341,7 +340,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 </span>
                 <span className="flex items-center text-gray-600 outfit-normal">
                   Received
-                  <ArrowDownToDot strokeWidth={1.7} className="w-3 h-3 ml-1" />
+                  <ArrowDown strokeWidth={1.7} className="w-3 h-3 ml-1" />
                 </span>
               </div>
             </div>
