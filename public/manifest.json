@@ -61,6 +61,12 @@
         "mac": "Command+Space"
       },
       "description": "__MSG_shareCurrentTabCommand__"
+    },
+    "share-current-tab-mac-alt": {
+      "suggested_key": {
+        "mac": "MacCtrl+Space"
+      },
+      "description": "__MSG_shareCurrentTabCommand__"
     }
   }
 }
