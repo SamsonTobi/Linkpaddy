@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
@@ -25,11 +25,52 @@ const ShareLink: React.FC<ShareLinkProps> = ({
   const [showFriendsList, setShowFriendsList] = useState(
     skipToFriends && !!initialLink,
   );
-  const [selectedFriends, setSelectedFriends] = useState<string[]>([]);
+  const [selectedFriendKeys, setSelectedFriendKeys] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [clipboardLink, setClipboardLink] = useState<string | null>(null);
   const [currentTabLink, setCurrentTabLink] = useState<string | null>(null);
   const [hasUsedClipboard, setHasUsedClipboard] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  const uniqueFriends = useMemo(() => {
+    const friendMap = new Map<
+      string,
+      { key: string; username: string; displayName: string; photoURL: string }
+    >();
+
+    (currentUser?.friends || []).forEach((friend) => {
+      const username =
+        typeof friend?.username === "string"
+          ? friend.username.trim().replace(/^@/, "").toLowerCase()
+          : "";
+      if (!username) return;
+
+      const uid =
+        typeof friend?.uid === "string" && friend.uid.trim()
+          ? friend.uid.trim()
+          : "";
+      const key = uid || username;
+
+      if (!friendMap.has(key)) {
+        friendMap.set(key, {
+          key,
+          username,
+          displayName:
+            typeof friend?.displayName === "string" ? friend.displayName : "",
+          photoURL: typeof friend?.photoURL === "string" ? friend.photoURL : "",
+        });
+      }
+    });
+
+    return Array.from(friendMap.values());
+  }, [currentUser?.friends]);
+
+  useEffect(() => {
+    setSelectedFriendKeys((prevKeys) => {
+      const validKeys = new Set(uniqueFriends.map((friend) => friend.key));
+      return prevKeys.filter((key) => validKeys.has(key));
+    });
+  }, [uniqueFriends]);
 
   useEffect(() => {
     const checkClipboard = async () => {
@@ -73,35 +114,50 @@ const ShareLink: React.FC<ShareLinkProps> = ({
 
   const handleShare = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSharing) return;
+
     setError(null);
     if (!link) {
       setError("Please enter a link");
       return;
     }
-    if (selectedFriends.length === 0) {
+
+    const selectedRecipients = uniqueFriends
+      .filter((friend) => selectedFriendKeys.includes(friend.key))
+      .map((friend) => friend.username);
+
+    if (selectedRecipients.length === 0) {
       setError("Please select at least one friend");
       return;
     }
+
     try {
-      await shareLink(link, selectedFriends);
+      setIsSharing(true);
+      await shareLink(link, selectedRecipients);
       onBack();
     } catch (error) {
-      setError("Failed to share link");
+      setError(error instanceof Error ? error.message : "Failed to share link");
+    } finally {
+      setIsSharing(false);
     }
   };
 
-  const toggleFriend = (friendUsername: string) => {
-    setSelectedFriends((prev) =>
-      prev.includes(friendUsername)
-        ? prev.filter((f) => f !== friendUsername)
-        : [...prev, friendUsername],
+  const toggleFriend = (friendKey: string) => {
+    setSelectedFriendKeys((prev) =>
+      prev.includes(friendKey)
+        ? prev.filter((key) => key !== friendKey)
+        : [...prev, friendKey],
     );
   };
 
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center gap-2 p-4 border-b">
-        <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full">
+        <button
+          onClick={onBack}
+          className="p-2 hover:bg-gray-100 rounded-full"
+          disabled={isSharing}
+        >
           <ArrowLeft className="w-5 h-5" />
         </button>
         <h2 className="text-xl font-semibold outfit-semibold">Share link</h2>
@@ -117,6 +173,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
               onChange={(e) => setLink(e.target.value)}
               placeholder="Enter the link you want to share"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
+              disabled={isSharing}
               required
             />
           </div>
@@ -125,7 +182,8 @@ const ShareLink: React.FC<ShareLinkProps> = ({
             <button
               type="button"
               onClick={handleClipboardPaste}
-              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2"
+              disabled={isSharing}
+              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Clipboard className="w-4 h-4" />
               Paste from clipboard
@@ -136,7 +194,8 @@ const ShareLink: React.FC<ShareLinkProps> = ({
             <button
               type="button"
               onClick={() => setLink(currentTabLink)}
-              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2"
+              disabled={isSharing}
+              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <Globe className="w-4 h-4" />
               Share this current tab
@@ -147,7 +206,8 @@ const ShareLink: React.FC<ShareLinkProps> = ({
             <button
               type="button"
               onClick={() => setShowFriendsList(true)}
-              className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-full gap-2 hover:bg-opacity-90 flex items-center justify-center"
+              disabled={isSharing}
+              className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-full gap-2 hover:bg-opacity-90 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <ExternalLink className="w-4 h-4" />
               Send to
@@ -159,18 +219,19 @@ const ShareLink: React.FC<ShareLinkProps> = ({
               <h3 className="font-semibold text-sm outfit-semibold">
                 Select friends:
               </h3>
-              {currentUser?.friends && currentUser.friends.length > 0 ? (
+              {uniqueFriends.length > 0 ? (
                 <>
                   <div className="space-y-2 mb-4">
-                    {currentUser.friends.map((friend) => (
+                    {uniqueFriends.map((friend) => (
                       <label
-                        key={friend.username}
+                        key={friend.key}
                         className="flex items-center cursor-pointer gap-2 p-3 border rounded-lg"
                       >
                         <input
                           type="checkbox"
-                          checked={selectedFriends.includes(friend.username)}
-                          onChange={() => toggleFriend(friend.username)}
+                          checked={selectedFriendKeys.includes(friend.key)}
+                          onChange={() => toggleFriend(friend.key)}
+                          disabled={isSharing}
                           className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm"
                         />
                         <div className="flex ml-2  items-center gap-2">
@@ -194,10 +255,11 @@ const ShareLink: React.FC<ShareLinkProps> = ({
                   <div>
                     <button
                       type="submit"
-                      className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-full hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center"
+                      disabled={isSharing}
+                      className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-full hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <Share className="w-4 h-4" />
-                      Share
+                      {isSharing ? "Sharing..." : "Share"}
                     </button>
                   </div>
                 </>

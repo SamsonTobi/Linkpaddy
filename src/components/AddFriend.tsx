@@ -14,6 +14,7 @@ interface AddFriendProps {
 }
 
 interface SearchResult {
+  uid?: string;
   username: string;
   email: string;
 }
@@ -21,11 +22,6 @@ interface SearchResult {
 interface ToastProps {
   message: string;
   type: "success" | "error";
-}
-
-interface User {
-  username?: string;
-  email?: string | null;
 }
 
 const LoadingSpinner: React.FC = () => (
@@ -55,7 +51,8 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     message: string;
     type: "success" | "error";
   } | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     if (searchTerm) {
@@ -81,6 +78,8 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSearching || isAdding) return;
+
     setError(null);
     setSearchResult(null);
     setShowSearchPrompt(false);
@@ -89,18 +88,14 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
     if (!trimmedSearchTerm) return;
 
-    setIsLoading(true);
+    setIsSearching(true);
 
     try {
-      const user = await new Promise<User>((resolve) => {
-        setTimeout(async () => {
-          const result = await searchUser(trimmedSearchTerm);
-          resolve(result || { username: "", email: "" });
-        }, 1500);
-      });
+      const user = await searchUser(trimmedSearchTerm);
 
       if (user) {
         setSearchResult({
+          uid: user.uid,
           username: user.username || "",
           email: user.email || "",
         });
@@ -113,17 +108,17 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     } catch (error) {
       setError("An error occurred while searching");
     } finally {
-      setIsLoading(false);
+      setIsSearching(false);
     }
   };
 
   const handleAddFriend = async () => {
-    if (!searchResult) return;
-    // setIsLoading(true);
+    if (!searchResult || isAdding) return;
 
     try {
+      setIsAdding(true);
       if (searchResult.username) {
-        await addFriend(searchResult.username);
+        await addFriend(searchResult.username, searchResult.uid);
         setToast({ message: "Friend added successfully!", type: "success" });
         setTimeout(() => onBack(), 2000);
       } else {
@@ -137,7 +132,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
         error instanceof Error ? error.message : "Failed to add friend";
       setToast({ message: errorMessage, type: "error" });
     } finally {
-      // setIsLoading(false);
+      setIsAdding(false);
     }
   };
 
@@ -172,12 +167,12 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
               autoFocus
               placeholder="Enter email/username to find friends or send invites"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
-              disabled={isLoading}
+              disabled={isSearching || isAdding}
             />
           </div>
         </form>
 
-        {showSearchPrompt && !isLoading && (
+        {showSearchPrompt && !isSearching && (
           <div className="flex items-center mt-3">
             <CornerDownLeft className="w-3 h-3 mr-3 text-gray-500" />
             <p className="text-xs text-gray-500 outfit-normal">
@@ -186,7 +181,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
           </div>
         )}
 
-        {isLoading ? (
+        {isSearching ? (
           <div className="mt-8">
             <LoadingSpinner />
           </div>
@@ -208,10 +203,11 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                     </p>
                     <button
                       onClick={handleAddFriend}
-                      className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+                      disabled={isAdding}
+                      className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <UserPlus className="w-4 h-4" />
-                      Add Friend
+                      {isAdding ? "Adding..." : "Add Friend"}
                     </button>
                   </>
                 ) : // Invite card
@@ -225,10 +221,11 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                     </p>
                     <button
                       onClick={handleAddFriend}
-                      className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+                      disabled={isAdding}
+                      className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <Mail className="w-4 h-4" />
-                      Send an Invite Mail
+                      {isAdding ? "Processing..." : "Send an Invite Mail"}
                     </button>
                   </>
                 ) : (

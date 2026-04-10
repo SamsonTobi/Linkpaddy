@@ -109,6 +109,7 @@ const Dashboard: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<string | null>(null);
+  const [isRemovingFriend, setIsRemovingFriend] = useState(false);
   const [linkPreviews, setLinkPreviews] = useState<Record<string, LinkPreview>>(
     {},
   );
@@ -161,8 +162,22 @@ const Dashboard: React.FC = () => {
     if (!currentUser?.friends) return [];
     const friendMap = new Map<string, (typeof currentUser.friends)[number]>();
     currentUser.friends.forEach((friend) => {
-      if (!friend?.username) return;
-      friendMap.set(friend.username, friend);
+      const username =
+        typeof friend?.username === "string"
+          ? friend.username.trim().replace(/^@/, "").toLowerCase()
+          : "";
+      const uid =
+        typeof friend?.uid === "string" && friend.uid.trim()
+          ? friend.uid.trim()
+          : "";
+      const identity = uid || username;
+      if (!identity) return;
+      if (!friendMap.has(identity)) {
+        friendMap.set(identity, {
+          ...friend,
+          username: username || friend.username,
+        });
+      }
     });
     return Array.from(friendMap.values());
   }, [currentUser?.friends]);
@@ -337,12 +352,15 @@ const Dashboard: React.FC = () => {
   };
 
   const confirmRemoveFriend = async () => {
-    if (friendToRemove) {
+    if (friendToRemove && !isRemovingFriend) {
       try {
+        setIsRemovingFriend(true);
         await removeFriend(friendToRemove);
         setFriendToRemove(null);
       } catch (error) {
         console.error("Failed to remove friend:", error);
+      } finally {
+        setIsRemovingFriend(false);
       }
     }
   };
@@ -672,7 +690,7 @@ const Dashboard: React.FC = () => {
                   </p>
                   {uniqueFriends.map((friend) => (
                     <div
-                      key={friend.username}
+                      key={friend.uid || friend.username}
                       className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg mb-2"
                     >
                       <div className="flex items-center gap-3 justify-between w-full">
@@ -696,7 +714,8 @@ const Dashboard: React.FC = () => {
                         </div>
                         <button
                           onClick={() => handleRemoveFriend(friend.username)}
-                          className="text-red-500 outfit-normal text-xs items-center justify-center flex hover:text-red-700"
+                          disabled={isRemovingFriend}
+                          className="text-red-500 outfit-normal text-xs items-center justify-center flex hover:text-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <UserMinus className="w-3 h-3 mr-1.5" />
                           Remove
@@ -744,15 +763,17 @@ const Dashboard: React.FC = () => {
             <div className="flex justify-end space-x-4">
               <button
                 onClick={() => setFriendToRemove(null)}
+                disabled={isRemovingFriend}
                 className="px-4 py-2 border border-gray-300 rounded-md outfit-medium text-gray-700 hover:bg-gray-100"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmRemoveFriend}
-                className="px-4 py-2 bg-red-500 text-white rounded-md outfit-medium hover:bg-red-600"
+                disabled={isRemovingFriend}
+                className="px-4 py-2 bg-red-500 text-white rounded-md outfit-medium hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Remove
+                {isRemovingFriend ? "Removing..." : "Remove"}
               </button>
             </div>
           </div>

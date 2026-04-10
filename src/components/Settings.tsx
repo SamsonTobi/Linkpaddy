@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
@@ -20,21 +20,76 @@ interface SettingsProps {
 }
 
 const Settings: React.FC<SettingsProps> = ({ onBack }) => {
-  const { currentUser, signOut, deleteAccount, updateSettings } = useAuth();
+  const {
+    currentUser,
+    signOut,
+    deleteAccount,
+    updateSettings,
+    updateUsername,
+    isLoading,
+  } = useAuth();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showKebabMenu, setShowKebabMenu] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
   const [inviteEmails, setInviteEmails] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
+  const [isUpdatingPreviews, setIsUpdatingPreviews] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState(
+    currentUser?.username || "",
+  );
+  const [isSavingUsername, setIsSavingUsername] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [usernameSaved, setUsernameSaved] = useState(false);
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
 
+  useEffect(() => {
+    setUsernameDraft(currentUser?.username || "");
+  }, [currentUser?.username]);
+
   const handleTogglePreviews = async () => {
+    if (isUpdatingPreviews) return;
+
     try {
+      setIsUpdatingPreviews(true);
       await updateSettings({ showLinkPreviews: !showLinkPreviews });
     } catch (error) {
       console.error("Failed to update preview setting:", error);
+    } finally {
+      setIsUpdatingPreviews(false);
+    }
+  };
+
+  const handleSignOut = () => {
+    if (isSigningOut || isLoading) return;
+    setIsSigningOut(true);
+    signOut();
+  };
+
+  const handleSaveUsername = async () => {
+    const normalized = usernameDraft.trim().replace(/^@/, "").toLowerCase();
+
+    if (!normalized) {
+      setUsernameError("Username is required");
+      return;
+    }
+
+    try {
+      setIsSavingUsername(true);
+      setUsernameError(null);
+      await updateUsername(normalized);
+      setUsernameSaved(true);
+      setIsEditingUsername(false);
+      setTimeout(() => setUsernameSaved(false), 2500);
+    } catch (error) {
+      setUsernameError(
+        error instanceof Error ? error.message : "Failed to update username",
+      );
+    } finally {
+      setIsSavingUsername(false);
     }
   };
 
@@ -164,18 +219,80 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <h3 className="font-medium outfit-medium text-lg">
                 {currentUser?.displayName}
               </h3>
-              <p className="text-gray-600 outfit-normal -mt-1">
-                @{currentUser?.username}
-              </p>
+              {!isEditingUsername ? (
+                <div className="flex items-center gap-2 -mt-1">
+                  <p className="text-gray-600 outfit-normal">
+                    @{currentUser?.username}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setIsEditingUsername(true);
+                      setUsernameError(null);
+                      setUsernameSaved(false);
+                    }}
+                    className="text-xs text-[#6C5CE7] outfit-medium hover:underline"
+                  >
+                    Edit
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center border border-gray-200 rounded-lg px-2 py-1.5 focus-within:ring-2 focus-within:ring-[#6C5CE7]">
+                    <span className="text-gray-500 text-sm">@</span>
+                    <input
+                      type="text"
+                      value={usernameDraft}
+                      onChange={(e) => {
+                        setUsernameDraft(e.target.value);
+                        if (usernameError) setUsernameError(null);
+                      }}
+                      className="w-full ml-1 text-sm outfit-normal focus:outline-none"
+                      maxLength={20}
+                      disabled={isSavingUsername}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleSaveUsername}
+                      disabled={isSavingUsername}
+                      className="text-xs bg-[#6C5CE7] text-white px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {isSavingUsername ? "Saving..." : "Save"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsEditingUsername(false);
+                        setUsernameDraft(currentUser?.username || "");
+                        setUsernameError(null);
+                      }}
+                      disabled={isSavingUsername}
+                      className="text-xs border border-gray-300 text-gray-700 px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  {usernameError && (
+                    <p className="text-xs text-red-500 outfit-normal">
+                      {usernameError}
+                    </p>
+                  )}
+                </div>
+              )}
+              {usernameSaved && !isEditingUsername && (
+                <p className="text-xs text-green-600 outfit-normal mt-1">
+                  Username updated successfully.
+                </p>
+              )}
             </div>
           </div>
           <div className="relative flex items-center gap-1">
             <button
-              onClick={signOut}
-              className="w-full flex items-center rounded-full justify-center gap-2 py-2 px-4 text-red-500 bg-red-50 outfit-semibold"
+              onClick={handleSignOut}
+              disabled={isSigningOut || isLoading}
+              className="w-full flex items-center rounded-full justify-center gap-2 py-2 px-4 text-red-500 bg-red-50 outfit-semibold disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <LogOut className="w-3.5 h-3.5" />
-              Logout
+              {isSigningOut || isLoading ? "Logging out..." : "Logout"}
             </button>
 
             <button
@@ -240,9 +357,10 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </div>
             <button
               onClick={handleTogglePreviews}
+              disabled={isUpdatingPreviews}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 showLinkPreviews ? "bg-[#6C5CE7]" : "bg-gray-300"
-              }`}
+              } disabled:opacity-70 disabled:cursor-not-allowed`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${

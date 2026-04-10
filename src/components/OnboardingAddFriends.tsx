@@ -8,6 +8,7 @@ interface OnboardingAddFriendsProps {
 }
 
 interface SearchResult {
+  uid?: string;
   username: string;
   email: string;
 }
@@ -22,6 +23,8 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
   const [addedFriends, setAddedFriends] = useState<string[]>([]);
   const [invitedEmails, setInvitedEmails] = useState<string[]>([]);
   const [showSearchPrompt, setShowSearchPrompt] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
 
   useEffect(() => {
     if (searchTerm) {
@@ -33,14 +36,18 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSearching || isAdding) return;
+
     setShowSearchPrompt(false);
 
     if (!searchTerm) return;
 
     try {
+      setIsSearching(true);
       const user = await searchUser(searchTerm);
       if (user) {
         setSearchResult({
+          uid: user.uid,
           username: user.username || "",
           email: user.email || "",
         });
@@ -53,15 +60,18 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
       }
     } catch (error) {
       console.error("Error searching for user:", error);
+    } finally {
+      setIsSearching(false);
     }
   };
 
   const handleAddFriend = async () => {
-    if (!searchResult) return;
+    if (!searchResult || isAdding) return;
 
     try {
+      setIsAdding(true);
       if (searchResult.username) {
-        await addFriend(searchResult.username);
+        await addFriend(searchResult.username, searchResult.uid);
         setAddedFriends((prev) => [...prev, searchResult.username]);
       } else {
         // Handle invitation
@@ -73,6 +83,8 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
       setSearchResult(null);
     } catch (error) {
       console.error("Failed to add friend:", error);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -111,11 +123,12 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
               onChange={handleInputChange}
               placeholder="Enter email/username to find friends or send invites"
               className="w-full py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
+              disabled={isSearching || isAdding}
             />
           </div>
         </form>
 
-        {showSearchPrompt && (
+        {showSearchPrompt && !isSearching && (
           <div className="flex items-center mt-2">
             <CornerDownLeft className="w-3 h-3 mr-3 text-gray-500" />
             <p className="text-xs outfit-normal text-gray-500">
@@ -130,15 +143,18 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
           {searchResult.username ? (
             // Existing user card
             <>
-              <p className="text-xs text-[#45A134] mb-2 outfit-normal">✓ Found</p>
+              <p className="text-xs text-[#45A134] mb-2 outfit-normal">
+                ✓ Found
+              </p>
               <p className="font-medium text-base">{searchResult.email}</p>
               <p className="text-sm">@{searchResult.username}</p>
               <button
                 onClick={handleAddFriend}
-                className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+                disabled={isAdding}
+                className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <UserPlus className="w-4 h-4" />
-                Add Friend
+                {isAdding ? "Adding..." : "Add Friend"}
               </button>
             </>
           ) : (
@@ -147,13 +163,16 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
               <p className="text-xs text-gray-500 mb-1 outfit-normal">
                 Looks like they haven't joined yet
               </p>
-              <p className="font-medium outfit-medium text-base">{searchResult.email}</p>
+              <p className="font-medium outfit-medium text-base">
+                {searchResult.email}
+              </p>
               <button
                 onClick={handleAddFriend}
-                className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2"
+                disabled={isAdding}
+                className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Mail className="w-4 h-4" />
-                Send an Invite Mail
+                {isAdding ? "Processing..." : "Send an Invite Mail"}
               </button>
             </>
           )}
@@ -167,8 +186,8 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
             {addedFriends.length > 0 && invitedEmails.length > 0
               ? "added/invited"
               : addedFriends.length > 0
-              ? "added"
-              : "invited"}
+                ? "added"
+                : "invited"}
           </p>
           <button
             onClick={onComplete}
