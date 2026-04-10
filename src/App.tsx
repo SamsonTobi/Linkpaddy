@@ -43,7 +43,7 @@ const AppContent: React.FC = () => {
     });
 
     // Timer setup for content display
-    let timer: NodeJS.Timeout | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     if (!isLoading && currentUser !== undefined && isNewUser !== undefined) {
       timer = setTimeout(() => {
         setShowContent(true);
