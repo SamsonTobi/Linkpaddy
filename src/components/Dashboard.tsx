@@ -5,17 +5,17 @@ import {
   Users,
   ShareNetwork,
   Gear,
-  Share,
   UserMinus,
-  UserPlus,
   LinkBreak,
   UsersThree,
   FunnelSimple,
   CaretDown,
+  UserPlus,
 } from "@phosphor-icons/react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
 import AddFriend from "./AddFriend";
+import CustomButton from "./ui/CustomButton";
 
 interface LinkPreview {
   title?: string;
@@ -100,7 +100,7 @@ const openedLinkIcon = (
 );
 
 const Dashboard: React.FC = () => {
-  const { currentUser, updateLinkStatus, removeFriend } = useAuth();
+  const { currentUser, updateLinkStatus, removeFriend, acceptFriend, rejectFriend } = useAuth();
   const [activeTab, setActiveTab] = useState<"links" | "friends">("links");
   const [linkFilter, setLinkFilter] = useState<"all" | "sent" | "received">(
     "all",
@@ -124,7 +124,7 @@ const Dashboard: React.FC = () => {
         type: "shared" as const,
       })),
       ...(currentUser.receivedLinks || [])
-        .filter((link: any) => link.kind !== "friend_added")
+        .filter((link: any) => !link.kind || (link.kind !== "friend_added" && !link.kind.startsWith("friend_request_")))
         .map((link) => ({
           ...link,
           type: "received" as const,
@@ -182,12 +182,72 @@ const Dashboard: React.FC = () => {
     return Array.from(friendMap.values());
   }, [currentUser?.friends]);
 
+  const acceptedFriends = useMemo(() => {
+    return uniqueFriends.filter((f) => !f.status || f.status === "accepted");
+  }, [uniqueFriends]);
+
+  const pendingReceivedRequests = useMemo(() => {
+    const byUsername = new Map<string, (typeof uniqueFriends)[number]>();
+
+    uniqueFriends
+      .filter((f) => f.status === "request_received")
+      .forEach((friend) => {
+        const username =
+          typeof friend.username === "string"
+            ? friend.username.trim().replace(/^@/, "").toLowerCase()
+            : "";
+        if (username) {
+          byUsername.set(username, friend);
+        }
+      });
+
+    (currentUser?.receivedLinks || [])
+      .filter(
+        (link: any) =>
+          link.kind === "friend_request_received" &&
+          link.sender &&
+          link.status === "unseen",
+      )
+      .forEach((link: any) => {
+        const username = String(link.sender).trim().replace(/^@/, "").toLowerCase();
+        if (!username || byUsername.has(username)) return;
+
+        byUsername.set(username, {
+          uid: link.senderProfile?.uid,
+          username,
+          displayName: link.senderProfile?.displayName || username,
+          email: link.senderProfile?.email || "",
+          photoURL: link.senderProfile?.photoURL || "",
+          addedAt: link.timestamp || new Date().toISOString(),
+          status: "request_received",
+        });
+      });
+
+    return Array.from(byUsername.values());
+  }, [uniqueFriends, currentUser?.receivedLinks]);
+
+  const pendingSentRequests = useMemo(() => {
+    return uniqueFriends.filter((f) => f.status === "request_sent");
+  }, [uniqueFriends]);
+
   const hasNoLinks =
     (currentUser?.sharedLinks?.length || 0) +
       (currentUser?.receivedLinks?.length || 0) ===
     0;
-  const hasNoFriends = uniqueFriends.length === 0;
+  const hasNoFriends = acceptedFriends.length === 0;
   const showGettingStartedPrompt = hasNoLinks && hasNoFriends;
+
+  // Refresh friends data when switching to friends tab
+  useEffect(() => {
+    if (activeTab === "friends") {
+      console.log("Switched to friends tab, triggering data refresh...");
+      chrome.runtime.sendMessage({ type: "REFRESH_DATA" }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.warn("Failed to trigger refresh:", chrome.runtime.lastError.message);
+        }
+      });
+    }
+  }, [activeTab]);
 
   // Fetch link previews
   useEffect(() => {
@@ -386,13 +446,16 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          <CustomButton
             onClick={() => setShowShareLink(true)}
-            className="bg-[#6C5CE7] text-white font-medium outfit-medium px-4 py-2 rounded-full flex items-center gap-2"
+            variant="primary"
+            size="sm"
+            className="font-medium"
+            showArrow={false}
+            trailingIcon={<ShareNetwork className="w-4 h-4" />}
           >
-            <Share className="w-4 h-4" />
             Share a link
-          </button>
+          </CustomButton>
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-gray-100 rounded-full"
@@ -417,33 +480,38 @@ const Dashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setActiveTab("friends")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-full outfit-normal relative ${
               activeTab === "friends"
                 ? "bg-gray-900 text-white font-medium outfit-medium"
                 : "bg-gray-100 text-gray-700"
             }`}
           >
             <Users className="w-4 h-4" />
-            Your Sharing Circle
+            <span>Your Sharing Circle</span>
+            {pendingReceivedRequests.length > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white leading-none">
+                {pendingReceivedRequests.length}
+              </span>
+            )}
           </button>
         </div>
 
         {/* Filter dropdown - only show when on links tab */}
         {activeTab === "links" && (
-          <div className="relative inline-flex items-center gap-1 text-sm text-gray-600 w-fit whitespace-nowrap">
-            <FunnelSimple className="w-4 h-4" />
+          <div className="relative inline-flex items-center justify-center p-2 hover:bg-gray-100 rounded-full cursor-pointer">
+            <FunnelSimple className="w-5 h-5 text-gray-600" />
             <select
               value={linkFilter}
               onChange={(e) =>
                 setLinkFilter(e.target.value as "all" | "sent" | "received")
               }
-              className="appearance-none bg-transparent pr-5 py-0 outfit-normal cursor-pointer focus:outline-none w-auto"
+              className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+              title="Filter links"
             >
-              <option value="all">All</option>
-              <option value="sent">Sent</option>
-              <option value="received">Received</option>
+              <option value="all">All Links</option>
+              <option value="sent">Sent Links</option>
+              <option value="received">Received Links</option>
             </select>
-            <CaretDown className="w-4 h-4 absolute right-0 pointer-events-none" />
           </div>
         )}
       </div>
@@ -661,13 +729,15 @@ const Dashboard: React.FC = () => {
                     : "Your shared links would appear here."}
                 </p>
                 {showGettingStartedPrompt && (
-                  <button
+                  <CustomButton
                     onClick={() => setShowAddFriend(true)}
-                    className="mt-5 border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium rounded-full py-2 px-4 flex items-center justify-center gap-2"
+                    variant="outlinePrimary"
+                    className="mt-5"
+                    showArrow={false}
+                    trailingIcon={<UserPlus className="w-4 h-4" />}
                   >
-                    <UserPlus className="w-4 h-4" />
                     Add A Friend
-                  </button>
+                  </CustomButton>
                 )}
               </div>
             )}
@@ -676,53 +746,164 @@ const Dashboard: React.FC = () => {
         {activeTab === "friends" && (
           <div className="space-y-4 h-full">
             <div className="space-y-2 h-full">
-              {uniqueFriends.length > 0 ? (
+              {acceptedFriends.length > 0 || pendingReceivedRequests.length > 0 || pendingSentRequests.length > 0 ? (
                 <div className="w-full">
-                  <button
+                  <CustomButton
                     onClick={() => setShowAddFriend(true)}
-                    className="w-full border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium rounded-full py-2 px-4 flex items-center justify-center gap-2"
+                    variant="outlinePrimary"
+                    fullWidth
+                    showArrow={false}
+                    trailingIcon={<UserPlus className="w-4 h-4" />}
                   >
-                    <UserPlus className="w-4 h-4" />
                     Add/Invite a New Friend
-                  </button>
-                  <p className="text-gray-500 outfit-normal mt-4 mb-2">
-                    Added Friends
-                  </p>
-                  {uniqueFriends.map((friend) => (
-                    <div
-                      key={friend.uid || friend.username}
-                      className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg mb-2"
-                    >
-                      <div className="flex items-center gap-3 justify-between w-full">
-                        <div className="flex gap-3">
-                          <img
-                            src={friend.photoURL || "/default-avatar.png"}
-                            alt={`${friend.username}'s avatar`}
-                            className="w-10 h-10 rounded-full object-cover"
-                          />
-                          <div>
-                            <p className="font-medium text-sm outfit-medium">
-                              {friend.displayName}
-                            </p>
-                            <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
-                              @{friend.username}
-                            </p>
-                            <p className="text-xs text-gray-400 outfit-normal mt-2">
-                              Added {formatAddedDate(friend.addedAt)}
-                            </p>
+                  </CustomButton>
+
+                  {/* Pending Received Requests */}
+                  {pendingReceivedRequests.length > 0 && (
+                    <div className="mt-6">
+                      <p className="text-gray-500 outfit-normal font-medium text-xs mb-2.5">
+                        Pending Friend Requests ({pendingReceivedRequests.length})
+                      </p>
+                      {pendingReceivedRequests.map((friend) => (
+                        <div
+                          key={`received-${friend.uid || friend.username}`}
+                          className="flex w-full items-center justify-between p-3 bg-indigo-50/40 border border-indigo-100/60 rounded-xl mb-2"
+                        >
+                          <div className="flex items-center gap-3 justify-between w-full">
+                            <div className="flex gap-3">
+                              <img
+                                src={friend.photoURL || "/default-avatar.png"}
+                                alt={`${friend.username}'s avatar`}
+                                className="w-10 h-10 rounded-full object-cover border border-indigo-200"
+                              />
+                              <div>
+                                <p className="font-semibold text-sm outfit-semibold">
+                                  {friend.displayName}
+                                </p>
+                                <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
+                                  @{friend.username}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <CustomButton
+                                onClick={async () => {
+                                  try {
+                                    await acceptFriend(friend.username);
+                                  } catch (err) {
+                                    console.error("Accept friend error:", err);
+                                  }
+                                }}
+                                variant="primary"
+                                size="sm"
+                                showArrow={false}
+                                className="text-xs px-3 py-1.5 rounded-full"
+                              >
+                                Accept
+                              </CustomButton>
+                              <CustomButton
+                                onClick={async () => {
+                                  try {
+                                    await rejectFriend(friend.username);
+                                  } catch (err) {
+                                    console.error("Decline friend error:", err);
+                                  }
+                                }}
+                                variant="neutral"
+                                size="sm"
+                                showArrow={false}
+                                className="text-xs px-3 py-1.5 rounded-full"
+                              >
+                                Decline
+                              </CustomButton>
+                            </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => handleRemoveFriend(friend.username)}
-                          disabled={isRemovingFriend}
-                          className="text-red-500 outfit-normal text-xs items-center justify-center flex hover:text-red-700 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          <UserMinus className="w-3 h-3 mr-1.5" />
-                          Remove
-                        </button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
+
+                  {/* Added Friends */}
+                  {acceptedFriends.length > 0 && (
+                    <div className="mt-6">
+                      <p className="text-gray-500 outfit-normal font-medium mb-2">
+                        Added Friends
+                      </p>
+                      {acceptedFriends.map((friend) => (
+                        <div
+                          key={friend.uid || friend.username}
+                          className="flex w-full items-center justify-between p-3 bg-gray-50 rounded-lg mb-2"
+                        >
+                          <div className="flex items-center gap-3 justify-between w-full">
+                            <div className="flex gap-3">
+                              <img
+                                src={friend.photoURL || "/default-avatar.png"}
+                                alt={`${friend.username}'s avatar`}
+                                className="w-10 h-10 rounded-full object-cover"
+                              />
+                              <div>
+                                <p className="font-medium text-sm outfit-medium">
+                                  {friend.displayName}
+                                </p>
+                                <p className="text-sm text-gray-500 outfit-normal -mt-[2px]">
+                                  @{friend.username}
+                                </p>
+                                <p className="text-xs text-gray-400 outfit-normal mt-2">
+                                  Added {formatAddedDate(friend.addedAt)}
+                                </p>
+                              </div>
+                            </div>
+                            <CustomButton
+                              onClick={() => handleRemoveFriend(friend.username)}
+                              disabled={isRemovingFriend}
+                              variant="subtleDanger"
+                              size="sm"
+                              showArrow={false}
+                              className="text-xs"
+                            >
+                              Remove
+                            </CustomButton>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Pending Sent Requests */}
+                  {pendingSentRequests.length > 0 && (
+                    <div className="mt-6 pt-4 border-t border-gray-100">
+                      <p className="text-gray-400 font-semibold text-[10px] mb-2 uppercase tracking-wider">
+                        Sent Requests (Pending)
+                      </p>
+                      {pendingSentRequests.map((friend) => (
+                        <div
+                          key={`sent-${friend.uid || friend.username}`}
+                          className="flex w-full items-center justify-between p-2.5 bg-gray-50/50 rounded-xl mb-2 opacity-75"
+                        >
+                          <div className="flex items-center gap-3 justify-between w-full">
+                            <div className="flex gap-3">
+                              <img
+                                src={friend.photoURL || "/default-avatar.png"}
+                                alt={`${friend.username}'s avatar`}
+                                className="w-8 h-8 rounded-full object-cover"
+                              />
+                              <div>
+                                <p className="font-medium text-xs outfit-medium">
+                                  {friend.displayName}
+                                </p>
+                                <p className="text-xs text-gray-500 outfit-normal -mt-[2px]">
+                                  @{friend.username}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="text-xs text-gray-400 outfit-normal italic">
+                              Request Sent
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center h-full -mt-5">
@@ -736,13 +917,15 @@ const Dashboard: React.FC = () => {
                   <p className="text-center text-sm outfit-normal text-gray-500">
                     Search or invite friends to share links with.
                   </p>
-                  <button
+                  <CustomButton
                     onClick={() => setShowAddFriend(true)}
-                    className="w-3/4 border border-[#6C5CE7] active:bg-[#F0E2FF] text-[#6C5CE7] font-medium outfit-medium mt-5 rounded-full py-2 px-4 flex items-center justify-center gap-2"
+                    variant="outlinePrimary"
+                    className="w-3/4 mt-5"
+                    showArrow={false}
+                    trailingIcon={<UserPlus className="w-4 h-4" />}
                   >
-                    <UserPlus className="w-4 h-4" />
                     Add New Friend
-                  </button>
+                  </CustomButton>
                 </div>
               )}
             </div>
@@ -761,20 +944,22 @@ const Dashboard: React.FC = () => {
               list?
             </p>
             <div className="flex justify-end space-x-4">
-              <button
+              <CustomButton
                 onClick={() => setFriendToRemove(null)}
                 disabled={isRemovingFriend}
-                className="px-4 py-2 border border-gray-300 rounded-md outfit-medium text-gray-700 hover:bg-gray-100"
+                variant="neutral"
+                showArrow={false}
               >
                 Cancel
-              </button>
-              <button
+              </CustomButton>
+              <CustomButton
                 onClick={confirmRemoveFriend}
                 disabled={isRemovingFriend}
-                className="px-4 py-2 bg-red-500 text-white rounded-md outfit-medium hover:bg-red-600 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="danger"
+                showArrow={false}
               >
                 {isRemovingFriend ? "Removing..." : "Remove"}
-              </button>
+              </CustomButton>
             </div>
           </div>
         </div>
