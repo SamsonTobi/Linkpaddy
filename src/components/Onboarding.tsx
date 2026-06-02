@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
+import { PencilSimple, UserPlus } from "@phosphor-icons/react";
 import { useAuth } from "../contexts/AuthContext";
-import { Users } from "@phosphor-icons/react";
 import OnboardingAddFriends from "./OnboardingAddFriends";
+import CustomButton from "./ui/CustomButton";
 
 const Onboarding: React.FC = () => {
   const { currentUser, completeOnboarding, updateUsername } = useAuth();
@@ -12,13 +13,25 @@ const Onboarding: React.FC = () => {
   );
   const [usernameError, setUsernameError] = useState<string | null>(null);
   const [isSavingUsername, setIsSavingUsername] = useState(false);
+  const [completionError, setCompletionError] = useState<string | null>(null);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   useEffect(() => {
     setUsernameDraft(currentUser?.username || "");
   }, [currentUser?.username]);
 
-  const handleComplete = () => {
-    completeOnboarding();
+  const handleComplete = async () => {
+    try {
+      setIsCompleting(true);
+      setCompletionError(null);
+      await completeOnboarding();
+    } catch (error) {
+      setCompletionError(
+        error instanceof Error ? error.message : "Failed to complete onboarding",
+      );
+    } finally {
+      setIsCompleting(false);
+    }
   };
 
   const handleSaveUsername = async () => {
@@ -43,7 +56,13 @@ const Onboarding: React.FC = () => {
   };
 
   if (showAddFriends) {
-    return <OnboardingAddFriends onComplete={handleComplete} />;
+    return (
+      <OnboardingAddFriends
+        onComplete={handleComplete}
+        isCompleting={isCompleting}
+        completionError={completionError}
+      />
+    );
   }
 
   return (
@@ -85,9 +104,10 @@ const Onboarding: React.FC = () => {
                 setIsEditingUsername(true);
                 setUsernameError(null);
               }}
-              className="ml-2 text-xs text-[#6C5CE7] outfit-medium hover:underline"
+              className="ml-2 inline-flex items-center text-gray-400 hover:text-[#6C5CE7] transition-colors"
+              title="Edit username"
             >
-              Edit
+              <PencilSimple className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
@@ -107,24 +127,28 @@ const Onboarding: React.FC = () => {
               />
             </div>
             <div className="flex gap-2 justify-end">
-              <button
+              <CustomButton
                 onClick={handleSaveUsername}
                 disabled={isSavingUsername}
-                className="text-xs bg-[#6C5CE7] text-white px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="primary"
+                size="sm"
+                showArrow={false}
               >
                 {isSavingUsername ? "Saving..." : "Save"}
-              </button>
-              <button
+              </CustomButton>
+              <CustomButton
                 onClick={() => {
                   setIsEditingUsername(false);
                   setUsernameDraft(currentUser?.username || "");
                   setUsernameError(null);
                 }}
                 disabled={isSavingUsername}
-                className="text-xs border border-gray-300 text-gray-700 px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="neutral"
+                size="sm"
+                showArrow={false}
               >
                 Cancel
-              </button>
+              </CustomButton>
             </div>
             {usernameError && (
               <p className="text-xs text-red-500 outfit-normal">
@@ -146,13 +170,16 @@ const Onboarding: React.FC = () => {
         </p>
 
         {/* Add Friends Button */}
-        <button
+        <CustomButton
           onClick={() => setShowAddFriends(true)}
-          className="w-[85%] flex items-center justify-center gap-2 bg-[#6C5CE7] text-white text-xs py-3 px-6 rounded-full font-medium outfit-medium hover:bg-[#6051ce]"
+          variant="primary"
+          size="lg"
+          className="w-[85%] text-xs"
+          showArrow={false}
+          trailingIcon={<UserPlus className="w-5 h-5" />}
         >
-          <Users className="w-4 h-4" />
           Add Some Friends
-        </button>
+        </CustomButton>
       </div>
     </div>
   );

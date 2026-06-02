@@ -1,16 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
-import {
-  MagnifyingGlass,
-  UserPlus,
-  Check,
-  ArrowElbowDownLeft,
-  EnvelopeSimple,
-} from "@phosphor-icons/react";
-import friendIllus from "../assets/network.png"; // Adjust the path as necessary
+import { MagnifyingGlass, ArrowElbowDownLeft, UserPlus, PaperPlaneTilt, Check, Spinner } from "@phosphor-icons/react";
+import { networkImg } from "../assets/image";
+import CustomButton from "./ui/CustomButton";
 
 interface OnboardingAddFriendsProps {
   onComplete: () => void;
+  isCompleting?: boolean;
+  completionError?: string | null;
 }
 
 interface SearchResult {
@@ -21,6 +18,8 @@ interface SearchResult {
 
 const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
   onComplete,
+  isCompleting = false,
+  completionError = null,
 }) => {
   const { searchUser, addFriend, currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
@@ -106,7 +105,7 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
     <div className="flex flex-col items-center min-h-screen bg-white p-6">
       <div className="h-5 mt-7">
         <img
-          src={friendIllus}
+          src={networkImg}
           alt="Illustration of a group of friends"
           className="h-full"
         />
@@ -154,14 +153,17 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
               </p>
               <p className="font-medium text-base">{searchResult.email}</p>
               <p className="text-sm">@{searchResult.username}</p>
-              <button
+              <CustomButton
                 onClick={handleAddFriend}
                 disabled={isAdding}
-                className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="primary"
+                fullWidth
+                className="mt-4"
+                showArrow={false}
+                trailingIcon={<UserPlus className="w-5 h-5" />}
               >
-                <UserPlus className="w-4 h-4" />
                 {isAdding ? "Adding..." : "Add Friend"}
-              </button>
+              </CustomButton>
             </>
           ) : (
             // Invite card
@@ -172,36 +174,56 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
               <p className="font-medium outfit-medium text-base">
                 {searchResult.email}
               </p>
-              <button
+              <CustomButton
                 onClick={handleAddFriend}
                 disabled={isAdding}
-                className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                variant="dark"
+                fullWidth
+                className="mt-4"
+                showArrow={false}
+                trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
               >
-                <EnvelopeSimple className="w-4 h-4" />
                 {isAdding ? "Processing..." : "Send an Invite Mail"}
-              </button>
+              </CustomButton>
             </>
           )}
         </div>
       )}
 
       {totalCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t flex items-center justify-between">
-          <p className="text-gray-900 text-sm font-medium outfit-medium">
-            {totalCount} {totalCount === 1 ? "friend" : "friends"}{" "}
-            {addedFriends.length > 0 && invitedEmails.length > 0
-              ? "added/invited"
-              : addedFriends.length > 0
-                ? "added"
-                : "invited"}
-          </p>
-          <button
-            onClick={onComplete}
-            className="bg-[#6C5CE7] text-white font-medium outfit-medium px-6 py-2 rounded-full flex items-center gap-2"
-          >
-            <Check className="w-4 h-4" />
-            Done
-          </button>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t flex flex-col gap-2">
+          {completionError && (
+            <p className="text-xs text-red-500 outfit-normal text-right">
+              {completionError}
+            </p>
+          )}
+          <div className="flex items-center justify-between">
+            <p className="text-gray-900 text-sm font-medium outfit-medium">
+              {totalCount} {totalCount === 1 ? "friend" : "friends"}{" "}
+              {addedFriends.length > 0 && invitedEmails.length > 0
+                ? "added/invited"
+                : addedFriends.length > 0
+                  ? "added"
+                  : "invited"}
+            </p>
+            <CustomButton
+              onClick={onComplete}
+              disabled={isCompleting}
+              variant="primary"
+              size="sm"
+              className="min-w-[92px]"
+              showArrow={false}
+              trailingIcon={
+                isCompleting ? (
+                  <Spinner className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )
+              }
+            >
+              {isCompleting ? "Completing..." : "Done"}
+            </CustomButton>
+          </div>
         </div>
       )}
     </div>

@@ -6,17 +6,6 @@ import React, {
   ReactNode,
 } from "react";
 import { User } from "firebase/auth/web-extension";
-import { db } from "../firebase";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  onSnapshot,
-} from "firebase/firestore";
 
 interface SharedLink {
   id: string;
@@ -25,7 +14,13 @@ interface SharedLink {
   recipients: string[];
   timestamp: string;
   status: "unseen" | "seen" | "opened";
-  kind?: "link" | "friend_added";
+  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed";
+  senderProfile?: {
+    uid: string;
+    displayName: string;
+    photoURL: string;
+    email: string;
+  };
 }
 
 interface ReceivedLink {
@@ -34,7 +29,13 @@ interface ReceivedLink {
   sender: string;
   timestamp: string;
   status: "unseen" | "seen" | "opened";
-  kind?: "link" | "friend_added";
+  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed";
+  senderProfile?: {
+    uid: string;
+    displayName: string;
+    photoURL: string;
+    email: string;
+  };
 }
 
 interface Friend {
@@ -44,6 +45,7 @@ interface Friend {
   email: string;
   photoURL: string;
   addedAt: string;
+  status?: "accepted" | "request_sent" | "request_received";
 }
 
 interface UserSettings {
@@ -56,6 +58,7 @@ interface ExtendedUser extends User {
   sharedLinks?: SharedLink[];
   receivedLinks?: ReceivedLink[];
   settings?: UserSettings;
+  isNewUser?: boolean;
 }
 
 interface AuthContextType {
@@ -72,8 +75,10 @@ interface AuthContextType {
     linkId: string,
     status: "unseen" | "seen" | "opened",
   ) => Promise<void>;
+  acceptFriend: (friendUsername: string) => Promise<void>;
+  rejectFriend: (friendUsername: string) => Promise<void>;
   isNewUser: boolean;
-  completeOnboarding: () => void;
+  completeOnboarding: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   updateSettings: (settings: Partial<UserSettings>) => Promise<void>;
   updateUsername: (username: string) => Promise<void>;
@@ -106,8 +111,8 @@ function sanitizeFriend(
     return null;
   }
 
-  return {
-    uid: uid || undefined,
+  const sanitized: Friend = {
+    ...(uid ? { uid } : {}),
     username,
     displayName:
       typeof friend.displayName === "string" ? friend.displayName : "",
@@ -118,17 +123,34 @@ function sanitizeFriend(
         ? friend.addedAt
         : new Date().toISOString(),
   };
+
+  if (friend.status) {
+    sanitized.status = friend.status;
+  }
+
+  return sanitized;
 }
 
 function mergeFriend(existing: Friend, incoming: Friend): Friend {
-  return {
-    uid: incoming.uid || existing.uid,
+  const merged: Friend = {
     username: incoming.username || existing.username,
     displayName: incoming.displayName || existing.displayName || "",
     email: incoming.email || existing.email || "",
     photoURL: incoming.photoURL || existing.photoURL || "",
     addedAt: existing.addedAt || incoming.addedAt || new Date().toISOString(),
   };
+
+  const uid = incoming.uid || existing.uid;
+  const status = incoming.status || existing.status;
+
+  if (uid) {
+    merged.uid = uid;
+  }
+  if (status) {
+    merged.status = status;
+  }
+
+  return merged;
 }
 
 function dedupeFriendsByIdentity(
@@ -173,8 +195,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isNewUser, setIsNewUser] = useState(false); // Added isNewUser state
 
   useEffect(() => {
-    let unsubscribe: (() => void) | undefined;
-    let linksUnsubscribe: (() => void) | undefined;
+    const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+      if (areaName === "local" && changes.user && changes.user.newValue) {
+        const userData = changes.user.newValue;
+        setCurrentUser({
+          ...userData,
+          friends: dedupeFriendsByIdentity(userData.friends || []),
+        });
+        setIsNewUser(!!userData.isNewUser);
+      }
+    };
+    chrome.storage.onChanged.addListener(storageListener);
 
     const messageListener = (message: any) => {
       if (message.type === "SIGN_IN_COMPLETE") {
@@ -228,80 +259,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsNewUser(!!normalizedStoredUser.isNewUser); // Set isNewUser based on stored data
         chrome.storage.local.set({ user: normalizedStoredUser });
 
-        // Set up real-time listener when user is loaded
-        const userRef = doc(db, "users", normalizedStoredUser.uid);
-
-        // Fetch fresh data from Firestore immediately on popup open
-        getDoc(userRef)
-          .then((freshSnap) => {
-            if (freshSnap.exists()) {
-              const freshData = freshSnap.data();
-              setCurrentUser((prevUser) => {
-                if (prevUser) {
-                  const updatedUser = {
-                    ...prevUser,
-                    ...freshData,
-                    friends: dedupeFriendsByIdentity(freshData.friends || []),
-                  };
-                  chrome.storage.local.set({ user: updatedUser });
-                  return updatedUser;
-                }
-                return null;
-              });
-              setIsNewUser(!!freshData.isNewUser);
-            }
-          })
-          .catch((err) => console.error("Error fetching fresh data:", err));
-
-        unsubscribe = onSnapshot(
-          userRef,
-          (doc) => {
-            if (doc.exists()) {
-              const userData = doc.data();
-              setCurrentUser((prevUser) => {
-                if (prevUser) {
-                  const updatedUser = {
-                    ...prevUser,
-                    ...userData,
-                    friends: dedupeFriendsByIdentity(userData.friends || []),
-                  };
-                  setIsNewUser(!!userData.isNewUser); // Update isNewUser state
-                  // Update chrome storage
-                  chrome.storage.local.set({ user: updatedUser });
-                  return updatedUser;
-                }
-                return null;
-              });
-            }
-          },
-          (snapshotError) => {
-            console.error("User snapshot listener error:", snapshotError);
-          },
-        );
-
-        linksUnsubscribe = onSnapshot(
-          userRef,
-          (snapshot) => {
-            if (snapshot.exists()) {
-              const data = snapshot.data();
-              setCurrentUser((prevUser) => {
-                if (prevUser) {
-                  const updatedUser = {
-                    ...prevUser,
-                    sharedLinks: data.sharedLinks || [],
-                    receivedLinks: data.receivedLinks || [],
-                  };
-                  chrome.storage.local.set({ user: updatedUser });
-                  return updatedUser;
-                }
-                return null;
-              });
-            }
-          },
-          (snapshotError) => {
-            console.error("Links snapshot listener error:", snapshotError);
-          },
-        );
       }
       setIsLoading(false); // Keep this outside the if condition
     });
@@ -309,10 +266,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     // Return cleanup function at the useEffect level
     return () => {
       chrome.runtime.onMessage.removeListener(messageListener);
-      if (unsubscribe) {
-        unsubscribe();
-      }
-      if (linksUnsubscribe) linksUnsubscribe();
+      chrome.storage.onChanged.removeListener(storageListener);
     };
   }, []);
 
@@ -409,6 +363,87 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const acceptFriend = async (friendUsername: string) => {
+    if (!currentUser) throw new Error("No user logged in");
+    const previousFriends = currentUser.friends || [];
+    try {
+      const updatedFriends = previousFriends.map((f) => {
+        if (normalizeFriendUsername(f.username) === normalizeFriendUsername(friendUsername)) {
+          return { ...f, status: "accepted" as const };
+        }
+        return f;
+      });
+      const updatedUser = { ...currentUser, friends: updatedFriends };
+      setCurrentUser(updatedUser);
+      chrome.storage.local.set({ user: updatedUser });
+
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "ACCEPT_FRIEND",
+            currentUser: { uid: currentUser.uid, username: currentUser.username },
+            friendUsername,
+          },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          },
+        );
+      });
+      if (!response.success) {
+        throw new Error(response.error || "Failed to accept request");
+      }
+    } catch (err) {
+      console.error("Error accepting friend, rolling back:", err);
+      const revertedUser = { ...currentUser, friends: previousFriends };
+      setCurrentUser(revertedUser);
+      chrome.storage.local.set({ user: revertedUser });
+      throw err;
+    }
+  };
+
+  const rejectFriend = async (friendUsername: string) => {
+    if (!currentUser) throw new Error("No user logged in");
+    const previousFriends = currentUser.friends || [];
+    try {
+      const updatedFriends = previousFriends.filter(
+        (f) => normalizeFriendUsername(f.username) !== normalizeFriendUsername(friendUsername),
+      );
+      const updatedUser = { ...currentUser, friends: updatedFriends };
+      setCurrentUser(updatedUser);
+      chrome.storage.local.set({ user: updatedUser });
+
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "REJECT_FRIEND",
+            currentUser: { uid: currentUser.uid, username: currentUser.username },
+            friendUsername,
+          },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          },
+        );
+      });
+      if (!response.success) {
+        throw new Error(response.error || "Failed to reject request");
+      }
+    } catch (err) {
+      console.error("Error rejecting friend, rolling back:", err);
+      const revertedUser = { ...currentUser, friends: previousFriends };
+      setCurrentUser(revertedUser);
+      chrome.storage.local.set({ user: revertedUser });
+      throw err;
+    }
+  };
+
   const removeFriend = async (friendUsername: string) => {
     if (!currentUser) throw new Error("No user logged in");
 
@@ -418,76 +453,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
-      const userRef = doc(db, "users", currentUser.uid);
-      const friendQuery = query(
-        collection(db, "users"),
-        where("username", "==", normalizedTargetUsername),
-      );
-      const [friendSnapshot, userSnapshot] = await Promise.all([
-        getDocs(friendQuery),
-        getDoc(userRef),
-      ]);
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          {
+            type: "REMOVE_FRIEND",
+            currentUser: { uid: currentUser.uid, username: currentUser.username },
+            friendUsername: normalizedTargetUsername,
+          },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          }
+        );
+      });
 
-      if (friendSnapshot.empty) {
-        throw new Error("Friend not found");
+      if (!response || !response.success) {
+        throw new Error((response && response.error) || "Failed to remove friend");
       }
-
-      if (!userSnapshot.exists()) {
-        throw new Error("Current user not found");
-      }
-
-      const friendDoc = friendSnapshot.docs[0];
-      const friendRef = doc(db, "users", friendDoc.id);
-      const friendData = friendDoc.data();
-
-      const currentFriends = dedupeFriendsByIdentity(
-        Array.isArray(userSnapshot.data().friends)
-          ? (userSnapshot.data().friends as Friend[])
-          : currentUser.friends || [],
-      );
-
-      const updatedCurrentFriends = currentFriends.filter((friend) => {
-        const sameUid = !!friend.uid && friend.uid === friendDoc.id;
-        const sameUsername =
-          normalizeFriendUsername(friend.username) === normalizedTargetUsername;
-        return !(sameUid || sameUsername);
-      });
-
-      const friendFriends = dedupeFriendsByIdentity(
-        Array.isArray(friendData.friends)
-          ? (friendData.friends as Friend[])
-          : [],
-      );
-
-      const currentUserUsername = normalizeFriendUsername(currentUser.username);
-      const updatedFriendFriends = friendFriends.filter((friend) => {
-        const sameUid = !!friend.uid && friend.uid === currentUser.uid;
-        const sameUsername =
-          !!currentUserUsername &&
-          normalizeFriendUsername(friend.username) === currentUserUsername;
-        return !(sameUid || sameUsername);
-      });
-
-      await Promise.all([
-        updateDoc(userRef, { friends: updatedCurrentFriends }),
-        updateDoc(friendRef, { friends: updatedFriendFriends }),
-      ]);
-
-      setCurrentUser((prevUser) => {
-        if (!prevUser) return null;
-        return { ...prevUser, friends: updatedCurrentFriends };
-      });
-
-      // Update local storage
-      chrome.storage.local.get(["user"], (result) => {
-        if (result.user) {
-          const updatedUser = {
-            ...result.user,
-            friends: updatedCurrentFriends,
-          };
-          chrome.storage.local.set({ user: updatedUser });
-        }
-      });
     } catch (error) {
       console.error("Error removing friend:", error);
       throw new Error("Failed to remove friend");
@@ -501,29 +486,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
       if (!normalizedSearchTerm) return null;
 
-      const usersRef = collection(db, "users");
-      let q = query(usersRef, where("username", "==", normalizedSearchTerm));
-      let querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        q = query(
-          usersRef,
-          where("username", "==", normalizedSearchTerm.toLowerCase()),
+      const response = await new Promise<{ success: boolean; user?: ExtendedUser; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: "SEARCH_USER", searchTerm: normalizedSearchTerm },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          }
         );
-        querySnapshot = await getDocs(q);
+      });
+
+      if (!response || !response.success) {
+        if (response && response.error === "User not found") {
+          return null; // Return null if not found instead of throwing error
+        }
+        throw new Error((response && response.error) || "Failed to search for user");
       }
 
-      if (querySnapshot.empty) {
-        // If no user found by username, search by email
-        q = query(usersRef, where("email", "==", normalizedSearchTerm));
-        querySnapshot = await getDocs(q);
-      }
-
-      if (querySnapshot.empty) return null;
-
-      const userDoc = querySnapshot.docs[0];
-
-      return { ...userDoc.data(), uid: userDoc.id } as ExtendedUser;
+      return response.user || null;
     } catch (error) {
       console.error("Error searching for user:", error);
       throw new Error("Failed to search for user");
@@ -571,30 +554,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      // Update receiver's receivedLinks
-      const userRef = doc(db, "users", currentUser.uid);
-      const userSnap = await getDoc(userRef);
-      const userData = userSnap.data();
+      const updatedReceivedLinks = (currentUser.receivedLinks || []).map(
+        (link: ReceivedLink) =>
+          link.id === linkId ? { ...link, status } : link,
+      );
 
-      if (userData && userData.receivedLinks) {
-        const updatedReceivedLinks = userData.receivedLinks.map(
-          (link: ReceivedLink) =>
-            link.id === linkId ? { ...link, status } : link,
-        );
+      // Update local state optimistically
+      setCurrentUser((prevUser) => {
+        if (!prevUser) return null;
+        const updatedUser = {
+          ...prevUser,
+          receivedLinks: updatedReceivedLinks,
+        };
+        chrome.storage.local.set({ user: updatedUser });
+        return updatedUser;
+      });
 
-        await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
-
-        // Update local state
-        setCurrentUser((prevUser) => {
-          if (!prevUser) return null;
-          const updatedUser = {
-            ...prevUser,
-            receivedLinks: updatedReceivedLinks,
-          };
-          chrome.storage.local.set({ user: updatedUser });
-          return updatedUser;
-        });
-      }
+      chrome.runtime.sendMessage({ type: "UPDATE_LINK_STATUS", linkId, status });
     } catch (error) {
       console.error("Error updating link status:", error);
       throw new Error("Failed to update link status");
@@ -606,25 +582,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      const userRef = doc(db, "users", currentUser.uid);
       const newSettings = {
         ...currentUser.settings,
         ...settings,
       };
 
-      await updateDoc(userRef, { settings: newSettings });
-
-      // Update local state
+      // Update local state optimistically
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
         const updatedUser = {
           ...prevUser,
           settings: newSettings,
         };
-        // Update chrome storage
         chrome.storage.local.set({ user: updatedUser });
         return updatedUser;
       });
+
+      chrome.runtime.sendMessage({ type: "UPDATE_SETTINGS", uid: currentUser.uid, settings });
     } catch (error) {
       console.error("Error updating settings:", error);
       throw new Error("Failed to update settings");
@@ -651,23 +625,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
 
     try {
-      const usersRef = collection(db, "users");
-      const usernameQuery = query(
-        usersRef,
-        where("username", "==", normalizedUsername),
-      );
-      const usernameSnapshot = await getDocs(usernameQuery);
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: "UPDATE_USERNAME", uid: currentUser.uid, nextUsername: normalizedUsername },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          }
+        );
+      });
 
-      const takenByAnotherUser = usernameSnapshot.docs.some(
-        (snapshotDoc) => snapshotDoc.id !== currentUser.uid,
-      );
-
-      if (takenByAnotherUser) {
-        throw new Error("That username is already taken");
+      if (!response || !response.success) {
+        throw new Error((response && response.error) || "Failed to update username");
       }
-
-      const userRef = doc(db, "users", currentUser.uid);
-      await updateDoc(userRef, { username: normalizedUsername });
 
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
@@ -684,15 +657,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const completeOnboarding = () => {
-    // Added completeOnboarding function
+  const completeOnboarding = async () => {
+    if (!currentUser) return;
+
+    const previousUser = currentUser;
+    const updatedUser = { ...currentUser, isNewUser: false };
     setIsNewUser(false);
-    if (currentUser) {
-      const userRef = doc(db, "users", currentUser.uid);
-      updateDoc(userRef, { isNewUser: false });
-      setCurrentUser((prevUser) =>
-        prevUser ? { ...prevUser, isNewUser: false } : null,
-      );
+    setCurrentUser(updatedUser);
+    chrome.storage.local.set({ user: updatedUser });
+
+    try {
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: "COMPLETE_ONBOARDING", uid: currentUser.uid },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(res);
+            }
+          },
+        );
+      });
+
+      if (!response || !response.success) {
+        throw new Error(response?.error || "Failed to complete onboarding");
+      }
+    } catch (error) {
+      setIsNewUser(!!previousUser.isNewUser);
+      setCurrentUser(previousUser);
+      chrome.storage.local.set({ user: previousUser });
+      throw error;
     }
   };
 
@@ -707,6 +702,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     removeFriend,
     shareLink,
     updateLinkStatus,
+    acceptFriend,
+    rejectFriend,
     isNewUser,
     completeOnboarding,
     deleteAccount,
