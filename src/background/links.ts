@@ -1,6 +1,7 @@
 import { db } from "../firebase";
 import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
 import { resolveFriendRefByUsername } from "./friends";
+import { requireMatchingAuthUser } from "./authState";
 
 function normalizeRecipientUsername(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -22,6 +23,8 @@ export function handleUpdateLinkStatusMessage(
     }
 
     try {
+      await requireMatchingAuthUser(currentUser.uid);
+
       // Update receiver's document
       const userRef = doc(db, "users", currentUser.uid);
       const userDoc = await getDoc(userRef);
@@ -150,6 +153,8 @@ export async function shareLink(link: string, selectedFriends: string[]) {
     console.log("Current user:", userDataRaw?.username, userDataRaw?.uid);
 
     if (!userDataRaw) throw new Error("No user logged in");
+    await requireMatchingAuthUser(userDataRaw.uid);
+
     if (normalizedSelectedFriends.length === 0) {
       throw new Error("Please select at least one friend");
     }

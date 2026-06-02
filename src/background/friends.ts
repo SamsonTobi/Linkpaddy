@@ -11,6 +11,7 @@ import {
   runTransaction,
 } from "firebase/firestore";
 import { Friend } from "./types";
+import { requireMatchingAuthUser } from "./authState";
 
 const addFriendInFlight = new Map<string, Promise<{ newFriend: Friend }>>();
 
@@ -42,9 +43,9 @@ function sanitizeFriend(friend: Friend): Friend | null {
     return null;
   }
 
-  return {
-    uid: uid || undefined,
-    username: username || undefined,
+  const sanitized: Friend = {
+    ...(uid ? { uid } : {}),
+    ...(username ? { username } : {}),
     displayName:
       typeof friend?.displayName === "string" ? friend.displayName : "",
     email: typeof friend?.email === "string" ? friend.email : "",
@@ -54,17 +55,37 @@ function sanitizeFriend(friend: Friend): Friend | null {
         ? friend.addedAt
         : new Date().toISOString(),
   };
+
+  if (friend.status) {
+    sanitized.status = friend.status;
+  }
+
+  return sanitized;
 }
 
 function mergeFriend(existing: Friend, incoming: Friend): Friend {
-  return {
-    uid: incoming.uid || existing.uid,
-    username: incoming.username || existing.username,
+  const merged: Friend = {
     displayName: incoming.displayName || existing.displayName || "",
     email: incoming.email || existing.email || "",
     photoURL: incoming.photoURL || existing.photoURL || "",
     addedAt: existing.addedAt || incoming.addedAt || new Date().toISOString(),
   };
+
+  const uid = incoming.uid || existing.uid;
+  const username = incoming.username || existing.username;
+  const status = incoming.status || existing.status;
+
+  if (uid) {
+    merged.uid = uid;
+  }
+  if (username) {
+    merged.username = username;
+  }
+  if (status) {
+    merged.status = status;
+  }
+
+  return merged;
 }
 
 function dedupeFriends(friends: Friend[]): Friend[] {
@@ -91,6 +112,7 @@ function buildCanonicalFriend(
   friendUid: string,
   friendData: Record<string, unknown>,
   addedAt: string,
+  status?: "accepted" | "request_sent" | "request_received",
 ): Friend {
   const normalizedUsername = normalizeUsername(friendData.username);
   if (!normalizedUsername) {
@@ -106,6 +128,7 @@ function buildCanonicalFriend(
     photoURL:
       typeof friendData.photoURL === "string" ? friendData.photoURL : "",
     addedAt,
+    status: status || "accepted",
   };
 }
 
@@ -207,6 +230,8 @@ async function addFriendInternal(
   normalizedIdentifier: string,
   friendUid?: unknown,
 ) {
+  await requireMatchingAuthUser(currentUser.uid);
+
   const friendCandidate = await resolveFriendCandidate(
     normalizedIdentifier,
     friendUid,
@@ -231,8 +256,12 @@ async function addFriendInternal(
       transaction,
     ): Promise<{ newFriend: Friend; alreadyExists: boolean }> => {
       const userDoc = await transaction.get(userRef);
+      const friendDocSnap = await transaction.get(friendRef);
       if (!userDoc.exists()) {
         throw new Error("Current user not found");
+      }
+      if (!friendDocSnap.exists()) {
+        throw new Error("Friend user not found");
       }
 
       const rawFriends = Array.isArray(userDoc.data().friends)
@@ -253,6 +282,7 @@ async function addFriendInternal(
         friendCandidate.id,
         friendData,
         existingFriend?.addedAt || relationCreatedAt,
+        existingFriend?.status || "request_sent",
       );
 
       const nextFriends = existingFriend
@@ -268,6 +298,36 @@ async function addFriendInternal(
         : dedupeFriends([...normalizedFriends, canonicalFriend]);
 
       transaction.update(userRef, { friends: nextFriends });
+
+      if (!existingFriend) {
+        const friendFriendsRaw = Array.isArray(friendDocSnap.data().friends)
+          ? (friendDocSnap.data().friends as Friend[])
+          : [];
+        const normalizedCurrentUsername = normalizeUsername(currentUser.username);
+        const alreadyInFriendList = friendFriendsRaw.some((f) => {
+          const sameUid = !!f.uid && f.uid === currentUser.uid;
+          const sameUsername =
+            !!normalizedCurrentUsername &&
+            normalizeUsername(f.username) === normalizedCurrentUsername;
+          return sameUid || sameUsername;
+        });
+
+        if (!alreadyInFriendList) {
+          const meAsFriend: Friend = {
+            uid: currentUser.uid,
+            username: normalizedCurrentUsername,
+            displayName: currentUser.displayName || "",
+            email: currentUser.email || "",
+            photoURL: currentUser.photoURL || "",
+            addedAt: relationCreatedAt,
+            status: "request_received",
+          };
+
+          transaction.update(friendRef, {
+            friends: dedupeFriends([...friendFriendsRaw, meAsFriend]),
+          });
+        }
+      }
 
       return {
         newFriend: canonicalFriend,
@@ -285,7 +345,13 @@ async function addFriendInternal(
         sender: normalizeUsername(currentUser.username),
         timestamp: new Date().toISOString(),
         status: "unseen",
-        kind: "friend_added",
+        kind: "friend_request_received",
+        senderProfile: {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName || "",
+          photoURL: currentUser.photoURL || "",
+          email: currentUser.email || "",
+        },
       }),
     }).catch((friendNotificationError) => {
       console.warn(
@@ -340,4 +406,250 @@ export async function addFriend(
     console.error("Error adding friend:", error);
     throw error;
   }
+}
+
+export async function getFriendProfile(username: string) {
+  const profile = await resolveFriendCandidate(username);
+  if (!profile) return null;
+  return {
+    uid: profile.id,
+    username: normalizeUsername(profile.data.username),
+    displayName: typeof profile.data.displayName === "string" ? profile.data.displayName : "",
+    email: typeof profile.data.email === "string" ? profile.data.email : "",
+    photoURL: typeof profile.data.photoURL === "string" ? profile.data.photoURL : "",
+  };
+}
+
+export async function acceptFriendInternal(
+  currentUser: { uid: string; username: string },
+  friendUsername: string,
+) {
+  await requireMatchingAuthUser(currentUser.uid);
+
+  const normalizedFriendUsername = normalizeUsername(friendUsername);
+  const friendRefInfo = await resolveFriendRefByUsername(normalizedFriendUsername);
+  if (!friendRefInfo) {
+    throw new Error("Friend not found");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const friendRef = doc(db, "users", friendRefInfo.uid);
+
+  const transactionResult = await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    const friendDoc = await transaction.get(friendRef);
+    if (!userDoc.exists()) {
+      throw new Error("Current user not found");
+    }
+    if (!friendDoc.exists()) {
+      throw new Error("Friend user not found");
+    }
+
+    // Update current user's friends
+    const friends = Array.isArray(userDoc.data().friends)
+      ? (userDoc.data().friends as Friend[])
+      : [];
+
+    const updatedFriends = friends.map((f) => {
+      if (normalizeUsername(f.username) === normalizedFriendUsername) {
+        return { ...f, status: "accepted" as const };
+      }
+      return f;
+    });
+
+    transaction.update(userRef, { friends: updatedFriends });
+
+    const friendFriends = Array.isArray(friendDoc.data().friends)
+      ? (friendDoc.data().friends as Friend[])
+      : [];
+    const normalizedCurrentUsername = normalizeUsername(currentUser.username);
+    const updatedFriendFriends = friendFriends.map((f) => {
+      const sameUid = !!f.uid && f.uid === currentUser.uid;
+      const sameUsername =
+        !!normalizedCurrentUsername &&
+        normalizeUsername(f.username) === normalizedCurrentUsername;
+      if (sameUid || sameUsername) {
+        return { ...f, status: "accepted" as const };
+      }
+      return f;
+    });
+    transaction.update(friendRef, { friends: updatedFriendFriends });
+
+    return updatedFriends;
+  });
+
+  chrome.storage.local.get(["user"], (result) => {
+    if (result.user) {
+      const updatedUser = {
+        ...result.user,
+        friends: transactionResult,
+      };
+      chrome.storage.local.set({ user: updatedUser });
+    }
+  });
+
+  void updateDoc(friendRef, {
+    receivedLinks: arrayUnion({
+      id: `accept-${Date.now()}`,
+      link: "",
+      sender: normalizeUsername(currentUser.username),
+      timestamp: new Date().toISOString(),
+      status: "unseen",
+      kind: "friend_request_accepted",
+    }),
+  }).catch((err) => {
+    console.warn("Failed to notify friend of acceptance:", err);
+  });
+}
+
+export async function rejectFriendInternal(
+  currentUser: { uid: string; username: string },
+  friendUsername: string,
+) {
+  await requireMatchingAuthUser(currentUser.uid);
+
+  const normalizedFriendUsername = normalizeUsername(friendUsername);
+  const friendRefInfo = await resolveFriendRefByUsername(normalizedFriendUsername);
+  if (!friendRefInfo) {
+    throw new Error("Friend not found");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const friendRef = doc(db, "users", friendRefInfo.uid);
+
+  const transactionResult = await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    const friendDoc = await transaction.get(friendRef);
+    if (!userDoc.exists()) {
+      throw new Error("Current user not found");
+    }
+    if (!friendDoc.exists()) {
+      throw new Error("Friend user not found");
+    }
+
+    // Remove from current user's friends
+    const friends = Array.isArray(userDoc.data().friends)
+      ? (userDoc.data().friends as Friend[])
+      : [];
+
+    const updatedFriends = friends.filter(
+      (f) => normalizeUsername(f.username) !== normalizedFriendUsername,
+    );
+
+    transaction.update(userRef, { friends: updatedFriends });
+
+    const friendFriends = Array.isArray(friendDoc.data().friends)
+      ? (friendDoc.data().friends as Friend[])
+      : [];
+    const normalizedCurrentUsername = normalizeUsername(currentUser.username);
+    const updatedFriendFriends = friendFriends.filter((f) => {
+      const sameUid = !!f.uid && f.uid === currentUser.uid;
+      const sameUsername =
+        !!normalizedCurrentUsername &&
+        normalizeUsername(f.username) === normalizedCurrentUsername;
+      return !(sameUid || sameUsername);
+    });
+    transaction.update(friendRef, { friends: updatedFriendFriends });
+
+    return updatedFriends;
+  });
+
+  chrome.storage.local.get(["user"], (result) => {
+    if (result.user) {
+      const updatedUser = {
+        ...result.user,
+        friends: transactionResult,
+      };
+      chrome.storage.local.set({ user: updatedUser });
+    }
+  });
+
+  void updateDoc(friendRef, {
+    receivedLinks: arrayUnion({
+      id: `reject-${Date.now()}`,
+      link: "",
+      sender: normalizeUsername(currentUser.username),
+      timestamp: new Date().toISOString(),
+      status: "unseen",
+      kind: "friend_request_rejected",
+    }),
+  }).catch((err) => {
+    console.warn("Failed to notify friend of rejection:", err);
+  });
+}
+
+export async function removeFriendInternal(
+  currentUser: { uid: string; username: string },
+  friendUsername: string,
+) {
+  await requireMatchingAuthUser(currentUser.uid);
+
+  const normalizedFriendUsername = normalizeUsername(friendUsername);
+  const friendRefInfo = await resolveFriendRefByUsername(normalizedFriendUsername);
+  if (!friendRefInfo) {
+    throw new Error("Friend not found");
+  }
+
+  const userRef = doc(db, "users", currentUser.uid);
+  const friendRef = doc(db, "users", friendRefInfo.uid);
+
+  const transactionResult = await runTransaction(db, async (transaction) => {
+    const userDoc = await transaction.get(userRef);
+    const friendDoc = await transaction.get(friendRef);
+    if (!userDoc.exists()) {
+      throw new Error("Current user not found");
+    }
+    if (!friendDoc.exists()) {
+      throw new Error("Friend user not found");
+    }
+
+    // Remove from current user's friends
+    const friends = Array.isArray(userDoc.data().friends)
+      ? (userDoc.data().friends as Friend[])
+      : [];
+
+    const updatedFriends = friends.filter(
+      (f) => normalizeUsername(f.username) !== normalizedFriendUsername,
+    );
+
+    transaction.update(userRef, { friends: updatedFriends });
+
+    const friendFriends = Array.isArray(friendDoc.data().friends)
+      ? (friendDoc.data().friends as Friend[])
+      : [];
+    const normalizedCurrentUsername = normalizeUsername(currentUser.username);
+    const updatedFriendFriends = friendFriends.filter((f) => {
+      const sameUid = !!f.uid && f.uid === currentUser.uid;
+      const sameUsername =
+        !!normalizedCurrentUsername &&
+        normalizeUsername(f.username) === normalizedCurrentUsername;
+      return !(sameUid || sameUsername);
+    });
+    transaction.update(friendRef, { friends: updatedFriendFriends });
+
+    return updatedFriends;
+  });
+
+  chrome.storage.local.get(["user"], (result) => {
+    if (result.user) {
+      const updatedUser = {
+        ...result.user,
+        friends: transactionResult,
+      };
+      chrome.storage.local.set({ user: updatedUser });
+    }
+  });
+
+  void updateDoc(friendRef, {
+    receivedLinks: arrayUnion({
+      id: `remove-${Date.now()}`,
+      link: "",
+      sender: normalizeUsername(currentUser.username),
+      timestamp: new Date().toISOString(),
+      status: "unseen",
+      kind: "friend_removed",
+    }),
+  }).catch((err) => {
+    console.warn("Failed to notify friend of removal:", err);
+  });
 }

@@ -3,11 +3,12 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
   MagnifyingGlass,
-  UserPlus,
   ArrowElbowDownLeft,
-  EnvelopeSimple,
   Spinner,
+  UserPlus,
+  PaperPlaneTilt,
 } from "@phosphor-icons/react";
+import CustomButton from "./ui/CustomButton";
 
 interface AddFriendProps {
   onBack: () => void;
@@ -119,7 +120,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
       setIsAdding(true);
       if (searchResult.username) {
         await addFriend(searchResult.username, searchResult.uid);
-        setToast({ message: "Friend added successfully!", type: "success" });
+        setToast({ message: "Friend request sent!", type: "success" });
         setTimeout(() => onBack(), 2000);
       } else {
         // Handle invitation
@@ -201,14 +202,17 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                     <p className="text-sm outfit-normal text-gray-600">
                       @{searchResult.username}
                     </p>
-                    <button
+                    <CustomButton
                       onClick={handleAddFriend}
                       disabled={isAdding}
-                      className="mt-4 w-full bg-[#6C5CE7] text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      variant="primary"
+                      fullWidth
+                      className="mt-4"
+                      showArrow={false}
+                      trailingIcon={<UserPlus className="w-5 h-5" />}
                     >
-                      <UserPlus className="w-4 h-4" />
                       {isAdding ? "Adding..." : "Add Friend"}
-                    </button>
+                    </CustomButton>
                   </>
                 ) : // Invite card
                 isValidEmail(searchResult.email) ? (
@@ -219,14 +223,17 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                     <p className="font-medium outfit-medium text-base">
                       {searchResult.email}
                     </p>
-                    <button
+                    <CustomButton
                       onClick={handleAddFriend}
                       disabled={isAdding}
-                      className="mt-4 w-full bg-gray-800 text-white font-medium outfit-medium py-2 px-4 rounded-lg flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                      variant="dark"
+                      fullWidth
+                      className="mt-4"
+                      showArrow={false}
+                      trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
                     >
-                      <EnvelopeSimple className="w-4 h-4" />
                       {isAdding ? "Processing..." : "Send an Invite Mail"}
-                    </button>
+                    </CustomButton>
                   </>
                 ) : (
                   <>

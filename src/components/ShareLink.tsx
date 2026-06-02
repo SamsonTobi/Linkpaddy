@@ -2,12 +2,12 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
-  Clipboard,
-  ArrowSquareOut,
-  Globe,
   LinkSimple,
-  Share,
+  ClipboardText,
+  Globe,
+  PaperPlaneTilt,
 } from "@phosphor-icons/react";
+import CustomButton from "./ui/CustomButton";
 
 interface ShareLinkProps {
   onBack: () => void;
@@ -39,6 +39,9 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     >();
 
     (currentUser?.friends || []).forEach((friend) => {
+      // Only show accepted friends or legacy friends with no status
+      if (friend?.status && friend.status !== "accepted") return;
+
       const username =
         typeof friend?.username === "string"
           ? friend.username.trim().replace(/^@/, "").toLowerCase()
@@ -179,39 +182,46 @@ const ShareLink: React.FC<ShareLinkProps> = ({
           </div>
 
           {!link && clipboardLink && !hasUsedClipboard && (
-            <button
+            <CustomButton
               type="button"
               onClick={handleClipboardPaste}
               disabled={isSharing}
-              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              variant="neutral"
+              fullWidth
+              showArrow={false}
+              trailingIcon={<ClipboardText className="w-5 h-5" />}
             >
-              <Clipboard className="w-4 h-4" />
               Paste from clipboard
-            </button>
+            </CustomButton>
           )}
 
           {!link && currentTabLink && (
-            <button
+            <CustomButton
               type="button"
               onClick={() => setLink(currentTabLink)}
               disabled={isSharing}
-              className="w-full font-medium bg-gray-100 text-gray-700 py-3 px-4 rounded-lg outfit-medium hover:bg-gray-200 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+              variant="neutral"
+              fullWidth
+              showArrow={false}
+              trailingIcon={<Globe className="w-5 h-5" />}
             >
-              <Globe className="w-4 h-4" />
               Share this current tab
-            </button>
+            </CustomButton>
           )}
 
           {link && !showFriendsList ? (
-            <button
+            <CustomButton
               type="button"
               onClick={() => setShowFriendsList(true)}
               disabled={isSharing}
-              className="w-full font-semibold outfit-semibold bg-[#6C5CE7] text-white py-3 px-4 rounded-full gap-2 hover:bg-opacity-90 flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+              variant="primary"
+              fullWidth
+              className="font-semibold outfit-semibold"
+              showArrow={false}
+              trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
             >
-              <ArrowSquareOut className="w-4 h-4" />
               Send to
-            </button>
+            </CustomButton>
           ) : null}
 
           {showFriendsList && (
@@ -253,14 +263,17 @@ const ShareLink: React.FC<ShareLinkProps> = ({
                     ))}
                   </div>
                   <div>
-                    <button
+                    <CustomButton
                       type="submit"
                       disabled={isSharing}
-                      className="w-full bg-[#6C5CE7] text-white py-3 px-4 rounded-full hover:bg-opacity-90 gap-2 mt-3 outfit-semibold flex items-center justify-center disabled:opacity-60 disabled:cursor-not-allowed"
+                      variant="primary"
+                      fullWidth
+                      className="mt-3 outfit-semibold"
+                      showArrow={false}
+                      trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
                     >
-                      <Share className="w-4 h-4" />
                       {isSharing ? "Sharing..." : "Share"}
-                    </button>
+                    </CustomButton>
                   </div>
                 </>
               ) : (
