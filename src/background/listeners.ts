@@ -1,8 +1,29 @@
-import { signIn, handleSignOut, deleteUser } from "./auth";
-import { addFriend } from "./friends";
+import { signIn, handleSignOut, deleteUser, searchUserInternal, updateSettingsInternal, updateUsernameInternal, completeOnboardingInternal } from "./auth";
+import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInternal } from "./friends";
 import { checkForNewLinks, updateBadge } from "./sync";
 import { openExtensionUi } from "./ui";
 import { handleUpdateLinkStatusMessage, shareLink } from "./links";
+
+const CHECK_NEW_LINKS_ALARM = "checkNewLinks";
+const QUICK_SYNC_THROTTLE_MS = 10000;
+
+let lastQuickSyncAt = 0;
+
+function ensureCheckNewLinksAlarm() {
+  chrome.alarms.create(CHECK_NEW_LINKS_ALARM, { periodInMinutes: 0.5 });
+}
+
+function triggerQuickSync(reason: string) {
+  const now = Date.now();
+  if (now - lastQuickSyncAt < QUICK_SYNC_THROTTLE_MS) {
+    return;
+  }
+
+  lastQuickSyncAt = now;
+  checkForNewLinks().catch((error) => {
+    console.error(`Quick sync failed (${reason}):`, error);
+  });
+}
 
 export function registerBackgroundListeners() {
   // Open the extension popup when the user clicks a notification
@@ -25,7 +46,7 @@ export function registerBackgroundListeners() {
 
   // Periodic polling for new links
   chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name === "checkNewLinks") {
+    if (alarm.name === CHECK_NEW_LINKS_ALARM) {
       await checkForNewLinks();
     }
   });
@@ -36,24 +57,37 @@ export function registerBackgroundListeners() {
       title: "Share this site with LinkPaddy",
       contexts: ["page"],
     });
-    chrome.alarms.create("checkNewLinks", { periodInMinutes: 0.5 });
+    ensureCheckNewLinksAlarm();
+    triggerQuickSync("onInstalled");
     updateBadge();
   });
 
   chrome.runtime.onStartup.addListener(() => {
-    chrome.alarms.create("checkNewLinks", { periodInMinutes: 0.5 });
+    ensureCheckNewLinksAlarm();
+    triggerQuickSync("onStartup");
     updateBadge();
+  });
+
+  // Run a quick sync when the user becomes active in the browser.
+  chrome.tabs.onActivated.addListener(() => {
+    triggerQuickSync("tabActivated");
+  });
+
+  chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+    if (changeInfo.status === "complete" && tab.active) {
+      triggerQuickSync("activeTabLoaded");
+    }
   });
 
   // Refresh data when popup connects (user opens the extension)
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name === "popup") {
       console.log("Popup opened, refreshing data...");
-      checkForNewLinks();
+      triggerQuickSync("popupConnected");
 
       // Keep refreshing while popup is open (every 5 seconds)
       const intervalId = setInterval(() => {
-        checkForNewLinks();
+        triggerQuickSync("popupPolling");
       }, 5000);
 
       port.onDisconnect.addListener(() => {
@@ -64,6 +98,8 @@ export function registerBackgroundListeners() {
   });
 
   // Initial badge check when service worker starts
+  ensureCheckNewLinksAlarm();
+  triggerQuickSync("serviceWorkerStart");
   updateBadge();
 
   chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -117,6 +153,16 @@ export function registerBackgroundListeners() {
           sendResponse({ success: false, error: error.message }),
         );
       return true; // Indicates that the response is sent asynchronously
+    } else if (message.type === "ACCEPT_FRIEND") {
+      acceptFriendInternal(message.currentUser, message.friendUsername)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "REJECT_FRIEND") {
+      rejectFriendInternal(message.currentUser, message.friendUsername)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
     } else if (message.type === "SHARE_LINK") {
       shareLink(message.link, message.selectedFriends)
         .then(() => sendResponse({ success: true }))
@@ -133,6 +179,31 @@ export function registerBackgroundListeners() {
       return true;
     } else if (message.type === "UPDATE_LINK_STATUS") {
       handleUpdateLinkStatusMessage(message, sendResponse);
+      return true;
+    } else if (message.type === "SEARCH_USER") {
+      searchUserInternal(message.searchTerm)
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "REMOVE_FRIEND") {
+      removeFriendInternal(message.currentUser, message.friendUsername)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "UPDATE_SETTINGS") {
+      updateSettingsInternal(message.uid, message.settings)
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "UPDATE_USERNAME") {
+      updateUsernameInternal(message.uid, message.nextUsername)
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "COMPLETE_ONBOARDING") {
+      completeOnboardingInternal(message.uid)
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
       return true;
     }
 

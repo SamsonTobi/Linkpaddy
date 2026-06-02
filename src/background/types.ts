@@ -5,7 +5,13 @@ export type SharedLink = {
   timestamp: string;
   recipients: string[];
   status: string;
-  kind?: "link" | "friend_added";
+  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed";
+  senderProfile?: {
+    uid: string;
+    displayName: string;
+    photoURL: string;
+    email: string;
+  };
 };
 
 export type Friend = {
@@ -15,4 +21,5 @@ export type Friend = {
   email?: string;
   photoURL?: string;
   addedAt?: string;
+  status?: "accepted" | "request_sent" | "request_received";
 };

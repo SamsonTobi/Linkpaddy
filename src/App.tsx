@@ -98,7 +98,7 @@ const App: React.FC = () => {
   }
 
   return (
-    <div style={{ width: "450px", height: "550px" }}>
+    <div style={{ width: "462px", height: "500px" }}>
       <AuthProvider>
         <AppContent />
       </AuthProvider>
