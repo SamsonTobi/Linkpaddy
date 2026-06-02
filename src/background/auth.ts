@@ -15,6 +15,7 @@ import {
   getDocs,
   deleteDoc,
 } from "firebase/firestore";
+import { requireMatchingAuthUser } from "./authState";
 
 function normalizeUsername(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -328,5 +329,80 @@ export async function deleteUser(uid: string) {
       error: error instanceof Error ? error.message : "Unknown error occurred",
     });
     throw error; // Re-throw error for handling by caller
+  }
+}
+
+export async function searchUserInternal(searchTerm: string) {
+  const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
+  if (!normalizedSearchTerm) return { success: false, error: "Invalid search term" };
+
+  try {
+    await requireMatchingAuthUser();
+
+    const q = query(collection(db, "users"), where("username", "==", normalizedSearchTerm));
+    const querySnapshot = await getDocs(q);
+
+    if (querySnapshot.empty) {
+      return { success: false, error: "User not found" };
+    }
+
+    const userDoc = querySnapshot.docs[0];
+    const userData = userDoc.data();
+    
+    // Omit sensitive data
+    return {
+      success: true,
+      user: {
+        uid: userDoc.id,
+        username: userData.username,
+        displayName: userData.displayName,
+        photoURL: userData.photoURL,
+      }
+    };
+  } catch (error) {
+    console.error("Error searching user:", error);
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
+  }
+}
+
+export async function updateSettingsInternal(uid: string, settings: any) {
+  try {
+    await requireMatchingAuthUser(uid);
+
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, { settings });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update settings" };
+  }
+}
+
+export async function completeOnboardingInternal(uid: string) {
+  try {
+    await requireMatchingAuthUser(uid);
+
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, { isNewUser: false });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to complete onboarding" };
+  }
+}
+
+export async function updateUsernameInternal(uid: string, nextUsername: string) {
+  try {
+    await requireMatchingAuthUser(uid);
+
+    const existing = await getDocs(
+      query(collection(db, "users"), where("username", "==", nextUsername)),
+    );
+    if (!existing.empty) {
+      return { success: false, error: "Username already taken" };
+    }
+    const userRef = doc(db, "users", uid);
+    await updateDoc(userRef, { username: nextUsername });
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : "Failed to update username" };
   }
 }
