@@ -2,15 +2,17 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
-  SignOut,
   Trash,
   X,
   DotsThreeVertical,
-  Copy,
   ArrowDown,
   ArrowUp,
+  UserPlus,
+  PaperPlaneTilt,
+  SignOut,
 } from "@phosphor-icons/react";
-import inviteIllus from "../assets/invite-illus.png"; // Adjust the path as necessary
+import { inviteIllus } from "../assets/image";
+import CustomButton from "./ui/CustomButton";
 
 const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
@@ -223,16 +225,19 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                   <p className="text-gray-600 outfit-normal">
                     @{currentUser?.username}
                   </p>
-                  <button
+                  <CustomButton
                     onClick={() => {
                       setIsEditingUsername(true);
                       setUsernameError(null);
                       setUsernameSaved(false);
                     }}
-                    className="text-xs text-[#6C5CE7] outfit-medium hover:underline"
+                    variant="ghost"
+                    size="sm"
+                    showArrow={false}
+                    className="px-1 py-0 text-xs text-[#6C5CE7] hover:bg-transparent hover:underline"
                   >
                     Edit
-                  </button>
+                  </CustomButton>
                 </div>
               ) : (
                 <div className="mt-2 space-y-2">
@@ -251,24 +256,28 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                     />
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <CustomButton
                       onClick={handleSaveUsername}
                       disabled={isSavingUsername}
-                      className="text-xs bg-[#6C5CE7] text-white px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                      variant="primary"
+                      size="sm"
+                      showArrow={false}
                     >
                       {isSavingUsername ? "Saving..." : "Save"}
-                    </button>
-                    <button
+                    </CustomButton>
+                    <CustomButton
                       onClick={() => {
                         setIsEditingUsername(false);
                         setUsernameDraft(currentUser?.username || "");
                         setUsernameError(null);
                       }}
                       disabled={isSavingUsername}
-                      className="text-xs border border-gray-300 text-gray-700 px-3 py-1 rounded-full outfit-medium disabled:opacity-60 disabled:cursor-not-allowed"
+                      variant="neutral"
+                      size="sm"
+                      showArrow={false}
                     >
                       Cancel
-                    </button>
+                    </CustomButton>
                   </div>
                   {usernameError && (
                     <p className="text-xs text-red-500 outfit-normal">
@@ -285,14 +294,17 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </div>
           </div>
           <div className="relative flex items-center gap-1">
-            <button
+            <CustomButton
               onClick={handleSignOut}
               disabled={isSigningOut || isLoading}
-              className="w-full flex items-center rounded-full justify-center gap-2 py-2 px-4 text-red-500 bg-red-50 outfit-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+              variant="subtleDanger"
+              size="sm"
+              showArrow={false}
+              trailingIcon={<SignOut className="w-4 h-4" />}
+              className="min-w-[110px] outfit-semibold"
             >
-              <SignOut className="w-3.5 h-3.5" />
               {isSigningOut || isLoading ? "Logging out..." : "Logout"}
-            </button>
+            </CustomButton>
 
             <button
               onClick={() => setShowKebabMenu(!showKebabMenu)}
@@ -379,13 +391,16 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <p className="text-gray-700 outfit-normal mb-4">
                 Turn everyday links into shared discoveries with friends
               </p>
-              <button
+              <CustomButton
                 onClick={handleOpenInviteDialog}
-                className="flex items-center gap-2 outfit-medium px-4 py-2 text-[#22162B] bg-white rounded-full hover:bg-gray-50"
+                variant="onPrimary"
+                size="sm"
+                className="text-[#22162B]"
+                showArrow={false}
+                trailingIcon={<UserPlus className="w-4 h-4" />}
               >
-                <Copy className="w-3.5 h-3.5" />
                 Invite some friends
-              </button>
+              </CustomButton>
             </div>
             <div className="w-36 absolute -bottom-1.5 right-0">
               <img
@@ -438,21 +453,25 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             )}
 
             <div className="flex gap-3 justify-end mt-5">
-              <button
+              <CustomButton
                 onClick={() => {
                   setShowInviteDialog(false);
                   setInviteError(null);
                 }}
-                className="px-4 py-2 outfit-medium rounded-full border border-gray-300 hover:bg-gray-50"
+                variant="neutral"
+                showArrow={false}
               >
                 Cancel
-              </button>
-              <button
+              </CustomButton>
+              <CustomButton
                 onClick={handleSendInviteEmail}
-                className="px-4 py-2 bg-[#6C5CE7] outfit-semibold text-white rounded-full hover:bg-[#6051ce]"
+                variant="primary"
+                className="outfit-semibold"
+                showArrow={false}
+                trailingIcon={<PaperPlaneTilt className="w-4 h-4" />}
               >
                 Continue To Email
-              </button>
+              </CustomButton>
             </div>
           </div>
         </div>
@@ -518,22 +537,25 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </div>
 
             <div className="flex gap-3 justify-end">
-              <button
+              <CustomButton
                 onClick={() => {
                   setShowDeleteDialog(false);
                   setShowKebabMenu(!showKebabMenu);
                 }}
-                className="px-4 py-2 outfit-medium rounded-full border border-gray-300 hover:bg-gray-50"
+                variant="neutral"
+                showArrow={false}
               >
                 Cancel
-              </button>
-              <button
+              </CustomButton>
+              <CustomButton
                 onClick={handleDeleteAccount}
                 disabled={isDeleting}
-                className="px-4 py-2 bg-red-600 outfit-semibold text-white rounded-full hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="danger"
+                showArrow={false}
+                className="outfit-semibold"
               >
                 {isDeleting ? "Deleting..." : "Delete My Account"}
-              </button>
+              </CustomButton>
             </div>
           </div>
         </div>
