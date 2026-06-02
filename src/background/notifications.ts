@@ -60,3 +60,69 @@ export function showFriendNotification(friend: Friend) {
     );
   });
 }
+
+export function showFriendRequestNotification(senderUsername: string) {
+  const notificationId = `friend-request-${senderUsername}-${Date.now()}`;
+  chrome.notifications.getPermissionLevel((level) => {
+    if (level !== "granted") return;
+    chrome.notifications.create(
+      notificationId,
+      {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: "New Friend Request",
+        message: `@${senderUsername} sent you a friend request.`,
+        priority: 2,
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error("Failed to create friend request notification:", chrome.runtime.lastError.message);
+        }
+      }
+    );
+  });
+}
+
+export function showFriendAcceptedNotification(senderUsername: string) {
+  const notificationId = `friend-accepted-${senderUsername}-${Date.now()}`;
+  chrome.notifications.getPermissionLevel((level) => {
+    if (level !== "granted") return;
+    chrome.notifications.create(
+      notificationId,
+      {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: "Friend Request Accepted",
+        message: `@${senderUsername} accepted your friend request!`,
+        priority: 2,
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error("Failed to create friend accepted notification:", chrome.runtime.lastError.message);
+        }
+      }
+    );
+  });
+}
+
+export function showFriendRequestReminderNotification(count: number) {
+  const notificationId = `friend-reminder-${Date.now()}`;
+  chrome.notifications.getPermissionLevel((level) => {
+    if (level !== "granted") return;
+    chrome.notifications.create(
+      notificationId,
+      {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: "Pending Friend Requests",
+        message: `You have ${count} pending friend request${count > 1 ? "s" : ""} waiting for your response.`,
+        priority: 1,
+      },
+      () => {
+        if (chrome.runtime.lastError) {
+          console.error("Failed to create friend reminder notification:", chrome.runtime.lastError.message);
+        }
+      }
+    );
+  });
+}
