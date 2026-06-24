@@ -399,7 +399,7 @@ export async function searchUserInternal(searchTerm: string) {
   if (!normalizedSearchTerm) return { success: false, error: "Invalid search term" };
 
   try {
-    await requireMatchingAuthUser();
+    const currentAuthUser = await requireMatchingAuthUser();
 
     // Use orderBy + client-side startsWith to avoid Firestore composite-index requirement
     const q = query(
@@ -409,9 +409,10 @@ export async function searchUserInternal(searchTerm: string) {
     );
     const querySnapshot = await getDocs(q);
 
-    // Filter to users whose username starts with the search term
+    // Filter to users whose username starts with the search term, excluding self
     const matchingUsers = querySnapshot.docs
       .filter((doc) => {
+        if (doc.id === currentAuthUser.uid) return false;
         const username = doc.data().username || "";
         return username.toLowerCase().startsWith(normalizedSearchTerm);
       })

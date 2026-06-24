@@ -7,6 +7,7 @@ import {
   Spinner,
   UserPlus,
   PaperPlaneTilt,
+  Users,
 } from "@phosphor-icons/react";
 import CustomButton from "./ui/CustomButton";
 
@@ -288,9 +289,13 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
             )}
 
             {searchResults !== null && searchResults.length === 0 && !showInviteFallback && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                <p className="outfit-medium text-sm">
-                  No users found matching "{searchTerm.trim()}"
+              <div className="mt-6 flex flex-col items-center justify-center py-8">
+                <Users className="w-12 h-12 text-gray-300 mb-3" strokeWidth={1.5} />
+                <p className="text-sm font-medium outfit-medium text-gray-700">
+                  No users found
+                </p>
+                <p className="text-xs text-gray-400 outfit-normal mt-1 text-center max-w-xs">
+                  No username matches "{searchTerm.trim()}". Try a different spelling or send an email invite instead.
                 </p>
               </div>
             )}
