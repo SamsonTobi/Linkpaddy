@@ -235,7 +235,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className="p-4 space-y-4">
+      <div className="px-4 pt-4 pb-6 space-y-4 overflow-auto flex-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full overflow-hidden border">
@@ -473,8 +473,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </div>
 
             <p className="text-sm text-gray-600 outfit-normal mb-3">
-              Enter your friends' emails. We'll open your mail app with
-              pre-written text, the extension link, and your username.
+              Enter your friends' emails and we'll send them an invite to LinkPaddy.
             </p>
 
             <textarea

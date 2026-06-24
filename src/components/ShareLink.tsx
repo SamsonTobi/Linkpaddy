@@ -201,7 +201,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
         <h2 className="text-xl font-semibold outfit-semibold">Share link</h2>
       </div>
 
-      <div className="p-4 flex-1 overflow-auto">
+      <div className="px-4 pt-4 pb-6 flex-1 overflow-auto">
         <form onSubmit={handleShare} className="space-y-4">
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
             <LinkSimple className="w-5 h-5 mr-3 text-gray-400" />

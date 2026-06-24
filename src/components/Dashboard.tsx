@@ -703,7 +703,7 @@ const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <div className="flex-1 p-4 pt-0 overflow-auto">
+      <div className="flex-1 px-4 pb-6 pt-0 overflow-auto">
         {activeTab === "links" && (
           <div className="space-y-3 h-full">
             {currentUser.sharedLinks &&
@@ -1203,8 +1203,7 @@ const Dashboard: React.FC = () => {
             </div>
 
             <p className="text-sm text-gray-600 outfit-normal mb-3">
-              Enter your friends' emails. We'll open your mail app with
-              pre-written text, the extension link, and your username.
+              Enter your friends' emails and we'll send them an invite to LinkPaddy.
             </p>
 
             <textarea
