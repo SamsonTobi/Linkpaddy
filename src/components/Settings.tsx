@@ -40,6 +40,9 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+
+  const RESEND_ENDPOINT = "https://linkpaddy.vercel.app/api/send-invite";
   const [usernameDraft, setUsernameDraft] = useState(
     currentUser?.username || "",
   );
@@ -141,7 +144,8 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     setShowInviteDialog(true);
   };
 
-  const handleSendInviteEmail = () => {
+  const handleSendInviteEmail = async () => {
+    if (isSendingInvite) return;
     const recipients = inviteEmails
       .split(/[;,\s]+/)
       .map((email) => email.trim())
@@ -158,34 +162,38 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       return;
     }
 
-    const inviterName =
-      currentUser?.displayName || currentUser?.username || "Your friend";
-    const inviterUsername = currentUser?.username || "";
-    const subject = `${inviterName} invited you to LinkPaddy`;
-    const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nIf you already know your friend's email, you can also add them directly by email in the app.\n\nSee you there!`;
-    const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    const openFallback = () => {
-      try {
-        window.open(mailtoUrl, "_blank");
-      } catch (error) {
-        window.location.href = mailtoUrl;
-      }
-    };
-
-    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
-      chrome.tabs.create({ url: mailtoUrl }, () => {
-        if (chrome.runtime.lastError) {
-          openFallback();
-        }
-      });
-    } else {
-      openFallback();
-    }
-
-    setShowInviteDialog(false);
-    setInviteEmails("");
+    setIsSendingInvite(true);
     setInviteError(null);
+
+    try {
+      const res = await fetch(RESEND_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: recipients, ref: currentUser?.username || "" }),
+      });
+
+      if (res.ok) {
+        setShowInviteDialog(false);
+        setInviteEmails("");
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      setInviteError((data.error as string) || "Could not send. Try again.");
+    } catch {
+      // Fallback to mailto
+      const inviterName =
+        currentUser?.displayName || currentUser?.username || "Your friend";
+      const inviterUsername = currentUser?.username || "";
+      const subject = `${inviterName} invited you to LinkPaddy`;
+      const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nSee you there!`;
+      const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailtoUrl, "_blank");
+      setShowInviteDialog(false);
+      setInviteEmails("");
+    } finally {
+      setIsSendingInvite(false);
+    }
   };
 
   const handleCopyInviteLink = () => {
@@ -493,17 +501,19 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
                 }}
                 variant="neutral"
                 showArrow={false}
+                disabled={isSendingInvite}
               >
                 Cancel
               </CustomButton>
               <CustomButton
                 onClick={handleSendInviteEmail}
+                disabled={isSendingInvite}
                 variant="primary"
                 className="outfit-semibold"
                 showArrow={false}
                 trailingIcon={<PaperPlaneTilt className="w-4 h-4" />}
               >
-                Continue To Email
+                {isSendingInvite ? "Sending..." : "Send Invites"}
               </CustomButton>
             </div>
           </div>

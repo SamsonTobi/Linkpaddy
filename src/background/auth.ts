@@ -409,12 +409,14 @@ export async function searchUserInternal(searchTerm: string) {
     );
     const querySnapshot = await getDocs(q);
 
-    // Filter to users whose username starts with the search term, excluding self
+    // Filter to users whose username or display name starts with the search term, excluding self
     const matchingUsers = querySnapshot.docs
       .filter((doc) => {
         if (doc.id === currentAuthUser.uid) return false;
-        const username = doc.data().username || "";
-        return username.toLowerCase().startsWith(normalizedSearchTerm);
+        const data = doc.data();
+        const username = (data.username || "").toLowerCase();
+        const displayName = (data.displayName || "").toLowerCase();
+        return username.startsWith(normalizedSearchTerm) || displayName.startsWith(normalizedSearchTerm);
       })
       .slice(0, 10);
 

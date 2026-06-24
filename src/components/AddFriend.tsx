@@ -124,7 +124,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
           })),
         );
       } else {
-        setSearchResults(null);
+        setSearchResults([]);
       }
     } catch {
       setError("An error occurred while searching");
@@ -189,6 +189,15 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
               disabled={isSearching || !!addingKey}
             />
+            {searchTerm.trim().length >= 2 && (
+              <button
+                type="submit"
+                disabled={isSearching || !!addingKey}
+                className="p-2 hover:bg-gray-100 rounded-full shrink-0"
+              >
+                <ArrowElbowDownLeft className="w-5 h-5 text-[#6C5CE7]" />
+              </button>
+            )}
           </div>
         </form>
 

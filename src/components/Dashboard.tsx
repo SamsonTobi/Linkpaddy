@@ -128,6 +128,9 @@ const Dashboard: React.FC = () => {
   const [inviteEmails, setInviteEmails] = useState("");
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+  const [isSendingInvite, setIsSendingInvite] = useState(false);
+
+  const RESEND_ENDPOINT = "https://linkpaddy.vercel.app/api/send-invite";
 
   // Detect platform
   const isMac = ((): boolean => {
@@ -177,7 +180,8 @@ const Dashboard: React.FC = () => {
     });
   };
 
-  const handleSendInviteEmail = () => {
+  const handleSendInviteEmail = async () => {
+    if (isSendingInvite) return;
     const recipients = inviteEmails
       .split(/[;,\s]+/)
       .map((e) => e.trim())
@@ -194,27 +198,37 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    const inviterName = currentUser?.displayName || currentUser?.username || "Your friend";
-    const inviterUsername = currentUser?.username || "";
-    const subject = `${inviterName} invited you to LinkPaddy`;
-    const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nIf you already know your friend's email, you can also add them directly by email in the app.\n\nSee you there!`;
-    const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    const openFallback = () => {
-      try { window.open(mailtoUrl, "_blank"); } catch { window.location.href = mailtoUrl; }
-    };
-
-    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
-      chrome.tabs.create({ url: mailtoUrl }, () => {
-        if (chrome.runtime.lastError) openFallback();
-      });
-    } else {
-      openFallback();
-    }
-
-    setShowInviteDialog(false);
-    setInviteEmails("");
+    setIsSendingInvite(true);
     setInviteError(null);
+
+    try {
+      const res = await fetch(RESEND_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ emails: recipients, ref: currentUser?.username || "" }),
+      });
+
+      if (res.ok) {
+        setShowInviteDialog(false);
+        setInviteEmails("");
+        return;
+      }
+
+      const data = await res.json().catch(() => ({}));
+      setInviteError((data.error as string) || "Could not send. Try again.");
+    } catch {
+      // Fallback to mailto
+      const inviterName = currentUser?.displayName || currentUser?.username || "Your friend";
+      const inviterUsername = currentUser?.username || "";
+      const subject = `${inviterName} invited you to LinkPaddy`;
+      const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nSee you there!`;
+      const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      window.open(mailtoUrl, "_blank");
+      setShowInviteDialog(false);
+      setInviteEmails("");
+    } finally {
+      setIsSendingInvite(false);
+    }
   };
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
@@ -255,11 +269,44 @@ const Dashboard: React.FC = () => {
     );
   }, [filteredLinks]);
 
+  const getDateLabel = (timestamp: string) => {
+    const now = new Date();
+    const date = new Date(timestamp);
+    now.setHours(0, 0, 0, 0);
+    date.setHours(0, 0, 0, 0);
+    const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "Today";
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays < 14) return "A week ago";
+    if (diffDays < 30) {
+      return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    }
+    const months = Math.floor(diffDays / 30);
+    if (months === 1) return "A month ago";
+    if (months < 12) return `${months} months ago`;
+    return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  };
+
   const otherLinks = useMemo(() => {
     return filteredLinks.filter(
       (link) => !(link.type === "received" && link.status === "unseen"),
     );
   }, [filteredLinks]);
+
+  const groupedOtherLinks = useMemo(() => {
+    const groups: { label: string; links: typeof otherLinks }[] = [];
+    let currentLabel = "";
+    for (const link of otherLinks) {
+      const label = getDateLabel(link.timestamp);
+      if (label !== currentLabel) {
+        currentLabel = label;
+        groups.push({ label, links: [] });
+      }
+      groups[groups.length - 1].links.push(link);
+    }
+    return groups;
+  }, [otherLinks]);
 
   const uniqueFriends = useMemo(() => {
     if (!currentUser?.friends) return [];
@@ -752,25 +799,19 @@ const Dashboard: React.FC = () => {
                   </>
                 )}
 
-                {/* Other links section */}
-                {otherLinks.length > 0 && (
-                  <>
-                    {unseenReceivedLinks.length > 0 && (
-                      <div className="flex items-center gap-2 pt-3 pb-1">
-                        <h3 className="text-sm font-semibold outfit-semibold text-gray-700">
-                          {linkFilter === "all"
-                            ? "All Links"
-                            : linkFilter === "sent"
-                              ? "Sent Links"
-                              : "Received Links"}
-                        </h3>
-                      </div>
-                    )}
-                    {otherLinks.map((link, index) => {
+                {/* Grouped links by date */}
+                {groupedOtherLinks.map((group) => (
+                  <div key={group.label}>
+                    <div className="flex items-center gap-2 pt-3 pb-1">
+                      <h3 className="text-xs font-semibold outfit-semibold text-gray-400 uppercase tracking-wider">
+                        {group.label}
+                      </h3>
+                    </div>
+                    {group.links.map((link, index) => {
                       const preview = linkPreviews[link.link];
                       return (
                         <div
-                          key={`${link.type}-${index}`}
+                          key={`${link.type}-${group.label}-${index}`}
                           className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors"
                           onClick={() => handleLinkClick(link)}
                         >
@@ -849,8 +890,8 @@ const Dashboard: React.FC = () => {
                         </div>
                       );
                     })}
-                  </>
-                )}
+                  </div>
+                ))}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center h-full -mt-5">
@@ -1190,17 +1231,19 @@ const Dashboard: React.FC = () => {
                 }}
                 variant="neutral"
                 showArrow={false}
+                disabled={isSendingInvite}
               >
                 Cancel
               </CustomButton>
               <CustomButton
                 onClick={handleSendInviteEmail}
+                disabled={isSendingInvite}
                 variant="primary"
                 className="outfit-semibold"
                 showArrow={false}
                 trailingIcon={<PaperPlaneTilt className="w-4 h-4" />}
               >
-                Continue To Email
+                {isSendingInvite ? "Sending..." : "Send Invites"}
               </CustomButton>
             </div>
           </div>
