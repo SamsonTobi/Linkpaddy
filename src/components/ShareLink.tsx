@@ -6,13 +6,25 @@ import {
   ClipboardText,
   Globe,
   PaperPlaneTilt,
+  MagnifyingGlass,
+  UserPlus,
+  Plus,
 } from "@phosphor-icons/react";
 import CustomButton from "./ui/CustomButton";
+import AddFriend from "./AddFriend";
 
 interface ShareLinkProps {
   onBack: () => void;
   initialLink?: string;
   skipToFriends?: boolean;
+}
+
+interface FriendEntry {
+  key: string;
+  username: string;
+  displayName: string;
+  photoURL: string;
+  status?: string;
 }
 
 const ShareLink: React.FC<ShareLinkProps> = ({
@@ -31,16 +43,17 @@ const ShareLink: React.FC<ShareLinkProps> = ({
   const [currentTabLink, setCurrentTabLink] = useState<string | null>(null);
   const [hasUsedClipboard, setHasUsedClipboard] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showAddFriend, setShowAddFriend] = useState(false);
 
   const uniqueFriends = useMemo(() => {
     const friendMap = new Map<
       string,
-      { key: string; username: string; displayName: string; photoURL: string }
+      FriendEntry
     >();
 
     (currentUser?.friends || []).forEach((friend) => {
-      // Only show accepted friends or legacy friends with no status
-      if (friend?.status && friend.status !== "accepted") return;
+      if (friend?.status && friend.status !== "accepted" && friend.status !== "request_sent") return;
 
       const username =
         typeof friend?.username === "string"
@@ -61,12 +74,23 @@ const ShareLink: React.FC<ShareLinkProps> = ({
           displayName:
             typeof friend?.displayName === "string" ? friend.displayName : "",
           photoURL: typeof friend?.photoURL === "string" ? friend.photoURL : "",
+          status: friend?.status,
         });
       }
     });
 
     return Array.from(friendMap.values());
   }, [currentUser?.friends]);
+
+  const filteredFriends = useMemo(() => {
+    if (!searchTerm.trim()) return uniqueFriends;
+    const term = searchTerm.trim().toLowerCase();
+    return uniqueFriends.filter(
+      (f) =>
+        f.username.includes(term) ||
+        f.displayName.toLowerCase().includes(term),
+    );
+  }, [uniqueFriends, searchTerm]);
 
   useEffect(() => {
     setSelectedFriendKeys((prevKeys) => {
@@ -108,6 +132,13 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     }
   }, [initialLink]);
 
+  // Auto-open the friend list when a link is entered
+  useEffect(() => {
+    if (link) {
+      setShowFriendsList(true);
+    }
+  }, [link]);
+
   const handleClipboardPaste = () => {
     if (clipboardLink) {
       setLink(clipboardLink);
@@ -125,7 +156,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
       return;
     }
 
-    const selectedRecipients = uniqueFriends
+    const selectedRecipients = filteredFriends
       .filter((friend) => selectedFriendKeys.includes(friend.key))
       .map((friend) => friend.username);
 
@@ -153,6 +184,10 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     );
   };
 
+  if (showAddFriend) {
+    return <AddFriend onBack={() => setShowAddFriend(false)} />;
+  }
+
   return (
     <div className="flex flex-col h-full bg-white">
       <div className="flex items-center gap-2 p-4 border-b">
@@ -166,7 +201,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
         <h2 className="text-xl font-semibold outfit-semibold">Share link</h2>
       </div>
 
-      <div className="p-4 flex-1">
+      <div className="p-4 flex-1 overflow-auto">
         <form onSubmit={handleShare} className="space-y-4">
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
             <LinkSimple className="w-5 h-5 mr-3 text-gray-400" />
@@ -209,30 +244,42 @@ const ShareLink: React.FC<ShareLinkProps> = ({
             </CustomButton>
           )}
 
-          {link && !showFriendsList ? (
-            <CustomButton
-              type="button"
-              onClick={() => setShowFriendsList(true)}
-              disabled={isSharing}
-              variant="primary"
-              fullWidth
-              className="font-semibold outfit-semibold"
-              showArrow={false}
-              trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
-            >
-              Send to
-            </CustomButton>
-          ) : null}
-
           {showFriendsList && (
-            <div className="space-y-2">
-              <h3 className="font-semibold text-sm outfit-semibold">
-                Select friends:
-              </h3>
-              {uniqueFriends.length > 0 ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm outfit-semibold">
+                  {uniqueFriends.length > 0
+                    ? "Select friends:"
+                    : "No friends yet"}
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowAddFriend(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#6C5CE7] bg-indigo-50 rounded-full hover:bg-indigo-100 transition-colors"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Add
+                </button>
+              </div>
+
+              {uniqueFriends.length > 0 && (
+                <div className="flex items-center gap-2 px-3 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
+                  <MagnifyingGlass className="w-4 h-4 text-gray-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search friends..."
+                    className="w-full py-2.5 text-sm bg-white outfit-normal focus:outline-none placeholder:text-gray-400"
+                    disabled={isSharing}
+                  />
+                </div>
+              )}
+
+              {filteredFriends.length > 0 ? (
                 <>
-                  <div className="space-y-2 mb-4">
-                    {uniqueFriends.map((friend) => (
+                  <div className="space-y-2 max-h-52 overflow-y-auto">
+                    {filteredFriends.map((friend) => (
                       <label
                         key={friend.key}
                         className="flex items-center cursor-pointer gap-2 p-3 border rounded-lg"
@@ -242,19 +289,26 @@ const ShareLink: React.FC<ShareLinkProps> = ({
                           checked={selectedFriendKeys.includes(friend.key)}
                           onChange={() => toggleFriend(friend.key)}
                           disabled={isSharing}
-                          className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm"
+                          className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm shrink-0"
                         />
-                        <div className="flex ml-2  items-center gap-2">
+                        <div className="flex ml-2 items-center gap-2 min-w-0">
                           <img
                             src={friend.photoURL || "/default-avatar.png"}
                             alt={`${friend.username}'s avatar`}
-                            className="w-7 h-7 rounded-full object-cover"
+                            className="w-7 h-7 rounded-full object-cover shrink-0"
                           />
-                          <div>
-                            <p className="font-medium text-sm outfit-medium">
-                              {friend.displayName}
-                            </p>
-                            <p className="outfit-normal text-gray-400 -mt-1">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <p className="font-medium text-sm outfit-medium truncate">
+                                {friend.displayName}
+                              </p>
+                              {friend.status === "request_sent" && (
+                                <span className="shrink-0 text-[10px] font-medium text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full leading-none">
+                                  Pending
+                                </span>
+                              )}
+                            </div>
+                            <p className="outfit-normal text-gray-400 text-sm -mt-0.5 truncate">
                               @{friend.username}
                             </p>
                           </div>
@@ -268,7 +322,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
                       disabled={isSharing}
                       variant="primary"
                       fullWidth
-                      className="mt-3 outfit-semibold"
+                      className="mt-2 outfit-semibold"
                       showArrow={false}
                       trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
                     >
@@ -276,10 +330,27 @@ const ShareLink: React.FC<ShareLinkProps> = ({
                     </CustomButton>
                   </div>
                 </>
-              ) : (
-                <p className="text-gray-500 outfit-normal">
-                  You haven't added any friends yet.
+              ) : uniqueFriends.length > 0 ? (
+                <p className="text-gray-400 text-sm outfit-normal text-center py-4">
+                  No friends match "{searchTerm}"
                 </p>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-gray-500 outfit-normal text-sm">
+                    You haven't added any friends yet.
+                  </p>
+                  <CustomButton
+                    type="button"
+                    onClick={() => setShowAddFriend(true)}
+                    variant="outlinePrimary"
+                    size="sm"
+                    className="mt-3"
+                    showArrow={false}
+                    trailingIcon={<Plus className="w-4 h-4" />}
+                  >
+                    Add a friend
+                  </CustomButton>
+                </div>
               )}
             </div>
           )}
