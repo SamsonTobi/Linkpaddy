@@ -1,6 +1,8 @@
 import { auth } from "../firebase";
+import { signInWithCredential, GoogleAuthProvider } from "firebase/auth/web-extension";
+import type { User } from "firebase/auth/web-extension";
 
-const AUTH_READY_TIMEOUT_MS = 3000;
+const AUTH_READY_TIMEOUT_MS = 8000;
 
 export class BackgroundAuthNotReadyError extends Error {
   constructor(message: string) {
@@ -26,11 +28,49 @@ export async function waitForAuthReadyWithTimeout() {
   }
 }
 
+async function trySilentReauth(): Promise<User | null> {
+  try {
+    const token = await new Promise<string | null>((resolve) => {
+      chrome.identity.getAuthToken({ interactive: false }, (t) => {
+        if (chrome.runtime.lastError || !t) {
+          resolve(null);
+          return;
+        }
+        resolve(t);
+      });
+    });
+    if (!token) return null;
+
+    const credential = GoogleAuthProvider.credential(null, token);
+    const result = await signInWithCredential(auth, credential);
+    return result.user;
+  } catch (error) {
+    console.warn("Silent re-auth attempt failed:", error);
+    return null;
+  }
+}
+
+let silentReauthAttempted = false;
+
 export async function requireMatchingAuthUser(expectedUid?: string) {
   await waitForAuthReadyWithTimeout();
 
-  const currentUser = auth.currentUser;
+  let currentUser = auth.currentUser;
+
+  if (!currentUser && !silentReauthAttempted) {
+    silentReauthAttempted = true;
+    console.log("Firebase auth not ready — attempting silent re-auth...");
+    currentUser = await trySilentReauth();
+  }
+
   if (!currentUser) {
+    // Send a signal to the popup so it can show the login screen directly
+    try {
+      chrome.runtime.sendMessage({ type: "SIGN_OUT_FORCED" });
+    } catch (_) {
+      // Popup might not be open — ignore
+    }
+
     throw new BackgroundAuthNotReadyError(
       "Firebase auth is not ready. Please reopen the extension or sign in again.",
     );
@@ -43,4 +83,9 @@ export async function requireMatchingAuthUser(expectedUid?: string) {
   }
 
   return currentUser;
+}
+
+/** Resets the silent-reauth flag so it can be retried on the next service-worker lifecycle. */
+export function resetSilentReauthFlag() {
+  silentReauthAttempted = false;
 }

@@ -234,6 +234,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       } else if (message.type === "DELETE_ACCOUNT_ERROR") {
         setError(message.error);
         setIsLoading(false);
+      } else if (message.type === "SIGN_OUT_FORCED") {
+        // Firebase auth session was lost silently — show the login screen
+        setCurrentUser(null);
+        setIsNewUser(false);
+        setIsLoading(false);
+        setError("Your session expired. Please sign in again.");
       } else if (message.type === "FRIEND_ADDED") {
         setCurrentUser((prevUser) =>
           prevUser

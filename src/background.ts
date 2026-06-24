@@ -92,5 +92,20 @@ if (typeof globalThis.XMLHttpRequest === "undefined") {
 }
 
 import { registerBackgroundListeners } from "./background/listeners";
+import { auth } from "./firebase";
+import { onAuthStateChanged } from "firebase/auth/web-extension";
+import { waitForAuthReadyWithTimeout, resetSilentReauthFlag } from "./background/authState";
+
+// Pre-warm Firebase Auth when service worker boots so auth state is ready
+// before the first popup request arrives.
+onAuthStateChanged(auth, () => {
+  // no-op — just forces Firebase to begin restoring the session immediately
+});
+waitForAuthReadyWithTimeout().then(() => {
+  // Clear the re-auth flag each time auth initializes successfully
+  if (auth.currentUser) {
+    resetSilentReauthFlag();
+  }
+});
 
 registerBackgroundListeners();
