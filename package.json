@@ -1,6 +1,6 @@
 {
   "name": "linkpaddy",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "The easiest way to share links with your inner circle",
   "main": "index.js",
   "scripts": {
@@ -13,12 +13,14 @@
     "firebase": "^10.14.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-router-dom": "^6.11.2"
+    "react-router-dom": "^6.11.2",
+    "resend": "^4.1.0"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.237",
     "@types/react": "^18.2.7",
     "@types/react-dom": "^18.2.4",
+    "@vercel/node": "^3.2.0",
     "autoprefixer": "^10.4.16",
     "copy-webpack-plugin": "^11.0.0",
     "css-loader": "^6.8.1",
