@@ -10,6 +10,7 @@ import {
   UserPlus,
   PaperPlaneTilt,
   SignOut,
+  ClipboardText,
 } from "@phosphor-icons/react";
 import { inviteIllus } from "../assets/image";
 import CustomButton from "./ui/CustomButton";
@@ -38,6 +39,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [isUpdatingPreviews, setIsUpdatingPreviews] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(
     currentUser?.username || "",
   );
@@ -184,6 +186,25 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     setShowInviteDialog(false);
     setInviteEmails("");
     setInviteError(null);
+  };
+
+  const handleCopyInviteLink = () => {
+    const username = currentUser?.username || "";
+    const inviteUrl = `${extensionLandingLink}invite?ref=${encodeURIComponent("@" + username)}`;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setInviteLinkCopied(true);
+      setTimeout(() => setInviteLinkCopied(false), 2500);
+    }).catch(() => {
+      // Fallback
+      const textarea = document.createElement("textarea");
+      textarea.value = inviteUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setInviteLinkCopied(true);
+      setTimeout(() => setInviteLinkCopied(false), 2500);
+    });
   };
 
   return (
@@ -391,16 +412,28 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <p className="text-gray-700 outfit-normal mb-4">
                 Turn everyday links into shared discoveries with friends
               </p>
-              <CustomButton
-                onClick={handleOpenInviteDialog}
-                variant="onPrimary"
-                size="sm"
-                className="text-[#22162B]"
-                showArrow={false}
-                trailingIcon={<UserPlus className="w-4 h-4" />}
-              >
-                Invite some friends
-              </CustomButton>
+              <div className="flex flex-wrap gap-2">
+                <CustomButton
+                  onClick={handleOpenInviteDialog}
+                  variant="onPrimary"
+                  size="sm"
+                  className="text-[#22162B]"
+                  showArrow={false}
+                  trailingIcon={<UserPlus className="w-4 h-4" />}
+                >
+                  Invite some friends
+                </CustomButton>
+                <CustomButton
+                  onClick={handleCopyInviteLink}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[#22162B] border border-[#22162B]/20 hover:bg-[#22162B]/10"
+                  showArrow={false}
+                  trailingIcon={<ClipboardText className="w-4 h-4" />}
+                >
+                  {inviteLinkCopied ? "Copied!" : "Copy invite link"}
+                </CustomButton>
+              </div>
             </div>
             <div className="w-36 absolute -bottom-1.5 right-0">
               <img
