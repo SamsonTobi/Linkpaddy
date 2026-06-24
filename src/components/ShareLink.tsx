@@ -53,7 +53,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     >();
 
     (currentUser?.friends || []).forEach((friend) => {
-      if (friend?.status && friend.status !== "accepted" && friend.status !== "request_sent") return;
+      if (friend?.status && friend.status !== "accepted" && friend.status !== "request_sent" && friend.status !== "auto") return;
 
       const username =
         typeof friend?.username === "string"

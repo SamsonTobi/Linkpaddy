@@ -49,12 +49,13 @@ const OnboardingAddFriends: React.FC<OnboardingAddFriendsProps> = ({
 
     try {
       setIsSearching(true);
-      const user = await searchUser(searchTerm);
-      if (user) {
+      const users = await searchUser(searchTerm);
+      if (users.length > 0) {
+        const found = users[0];
         setSearchResult({
-          uid: user.uid,
-          username: user.username || "",
-          email: user.email || "",
+          uid: found.uid,
+          username: found.username || "",
+          email: found.email || "",
         });
       } else {
         // User not found, show invite card

@@ -45,7 +45,7 @@ const Toast: React.FC<ToastProps> = ({ message, type }) => (
 const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   const { searchUser, addFriend } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [searchResult, setSearchResult] = useState<SearchResult | null>(null);
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showSearchPrompt, setShowSearchPrompt] = useState(false);
   const [toast, setToast] = useState<{
@@ -53,7 +53,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     type: "success" | "error";
   } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
+  const [addingKey, setAddingKey] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchTerm) {
@@ -79,10 +79,10 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSearching || isAdding) return;
+    if (isSearching || addingKey) return;
 
     setError(null);
-    setSearchResult(null);
+    setSearchResults(null);
     setShowSearchPrompt(false);
 
     const trimmedSearchTerm = searchTerm.trim();
@@ -92,57 +92,55 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     setIsSearching(true);
 
     try {
-      const user = await searchUser(trimmedSearchTerm);
+      const users = await searchUser(trimmedSearchTerm);
 
-      if (user) {
-        setSearchResult({
-          uid: user.uid,
-          username: user.username || "",
-          email: user.email || "",
-        });
+      if (users.length > 0) {
+        setSearchResults(
+          users.map((u) => ({
+            uid: u.uid,
+            username: u.username || "",
+            email: u.email || "",
+          })),
+        );
       } else {
-        setSearchResult({
-          username: "",
-          email: trimmedSearchTerm,
-        });
+        setSearchResults(null);
       }
-    } catch (error) {
+    } catch {
       setError("An error occurred while searching");
     } finally {
       setIsSearching(false);
     }
   };
 
-  const handleAddFriend = async () => {
-    if (!searchResult || isAdding) return;
+  const handleAddFriend = async (result: SearchResult) => {
+    if (!result.username || addingKey) return;
+    const key = result.uid || result.username;
 
     try {
-      setIsAdding(true);
-      if (searchResult.username) {
-        await addFriend(searchResult.username, searchResult.uid);
-        setToast({ message: "Friend request sent!", type: "success" });
-        setTimeout(() => onBack(), 2000);
-      } else {
-        // Handle invitation
-        setToast({ message: "Invitation sent successfully!", type: "success" });
-        setSearchTerm("");
-        setSearchResult(null);
-      }
+      setAddingKey(key);
+      await addFriend(result.username, result.uid);
+      setToast({ message: "Friend request sent!", type: "success" });
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : "Failed to add friend";
       setToast({ message: errorMessage, type: "error" });
     } finally {
-      setIsAdding(false);
+      setAddingKey(null);
     }
   };
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setSearchTerm(value);
-    setSearchResult(null);
+    setSearchResults(null);
     setError(null);
   };
+
+  const showInviteFallback =
+    searchResults === null &&
+    !isSearching &&
+    searchTerm.trim() &&
+    isValidEmail(searchTerm.trim());
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -168,7 +166,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
               autoFocus
               placeholder="Enter email/username to find friends or send invites"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
-              disabled={isSearching || isAdding}
+              disabled={isSearching || !!addingKey}
             />
           </div>
         </form>
@@ -188,60 +186,76 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
           </div>
         ) : (
           <>
-            {searchResult && (
+            {searchResults && searchResults.length > 0 && (
+              <div className="mt-4 space-y-3">
+                <p className="text-xs text-[#45A134] outfit-normal font-medium">
+                  {searchResults.length} result{searchResults.length > 1 ? "s" : ""}
+                </p>
+                {searchResults.map((result) => {
+                  const key = result.uid || result.username || result.email;
+                  const isThisAdding = addingKey === key;
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
+                    >
+                      <div>
+                        <p className="font-medium outfit-medium text-sm">
+                          {result.email || result.username}
+                        </p>
+                        {result.username && (
+                          <p className="text-sm outfit-normal text-gray-500">
+                            @{result.username}
+                          </p>
+                        )}
+                      </div>
+                      <CustomButton
+                        onClick={() => handleAddFriend(result)}
+                        disabled={!!addingKey}
+                        variant="primary"
+                        size="sm"
+                        showArrow={false}
+                        trailingIcon={<UserPlus className="w-4 h-4" />}
+                      >
+                        {isThisAdding ? "Adding..." : "Add Friend"}
+                      </CustomButton>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {searchResults !== null && searchResults.length === 0 && !showInviteFallback && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-                {searchResult.username ? (
-                  // Existing user card
-                  <>
-                    <p className="text-xs text-[#45A134] mb-2 outfit-normal">
-                      ✓ Found
-                    </p>
-                    <p className="font-medium outfit-medium text-base">
-                      {searchResult.email}
-                    </p>
-                    <p className="text-sm outfit-normal text-gray-600">
-                      @{searchResult.username}
-                    </p>
-                    <CustomButton
-                      onClick={handleAddFriend}
-                      disabled={isAdding}
-                      variant="primary"
-                      fullWidth
-                      className="mt-4"
-                      showArrow={false}
-                      trailingIcon={<UserPlus className="w-5 h-5" />}
-                    >
-                      {isAdding ? "Adding..." : "Add Friend"}
-                    </CustomButton>
-                  </>
-                ) : // Invite card
-                isValidEmail(searchResult.email) ? (
-                  <>
-                    <p className="text-xs text-gray-500 outfit-normal mb-1">
-                      Looks like they haven't joined yet
-                    </p>
-                    <p className="font-medium outfit-medium text-base">
-                      {searchResult.email}
-                    </p>
-                    <CustomButton
-                      onClick={handleAddFriend}
-                      disabled={isAdding}
-                      variant="dark"
-                      fullWidth
-                      className="mt-4"
-                      showArrow={false}
-                      trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
-                    >
-                      {isAdding ? "Processing..." : "Send an Invite Mail"}
-                    </CustomButton>
-                  </>
-                ) : (
-                  <>
-                    <p className="outfit-medium text-base">
-                      Oops! We couldn't find who you searched for...
-                    </p>
-                  </>
-                )}
+                <p className="outfit-medium text-sm">
+                  No users found matching "{searchTerm.trim()}"
+                </p>
+              </div>
+            )}
+
+            {showInviteFallback && (
+              <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                <p className="text-xs text-gray-500 outfit-normal mb-1">
+                  Looks like they haven't joined yet
+                </p>
+                <p className="font-medium outfit-medium text-base">
+                  {searchTerm.trim()}
+                </p>
+                <CustomButton
+                  onClick={() => {
+                    setToast({ message: "Invitation sent successfully!", type: "success" });
+                    setSearchTerm("");
+                    setSearchResults(null);
+                  }}
+                  disabled={!!addingKey}
+                  variant="dark"
+                  fullWidth
+                  className="mt-4"
+                  showArrow={false}
+                  trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
+                >
+                  Send an Invite Mail
+                </CustomButton>
               </div>
             )}
 

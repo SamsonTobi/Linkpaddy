@@ -18,6 +18,25 @@ const STORE_URLS = {
     "https://chromewebstore.google.com/detail/linkpaddy/kggogkkejjihfogcbjmpfpbagiglflnn",
 };
 
+const EdgeIcon: React.FC = () => (
+  <svg viewBox="0 0 18 18" className="w-12 h-12" xmlns="http://www.w3.org/2000/svg">
+    <path d="M16.2438 13.3946C16.0047 13.5211 15.7586 13.6336 15.5055 13.725 14.6969 14.0274 13.8461 14.1821 12.9813 14.1821 9.65547 14.1821 6.75859 11.8969 6.75859 8.95786 6.76562 8.1563 7.20859 7.41802 7.91172 7.03833 4.90234 7.16489 4.12891 10.3008 4.12891 12.136 4.12891 17.3321 8.91719 17.8594 9.95078 17.8594 10.5063 17.8594 11.343 17.6977 11.8492 17.536L11.9406 17.5079C13.8813 16.8399 15.5266 15.5321 16.6234 13.7954 16.7078 13.6618 16.6656 13.493 16.5391 13.4086 16.4477 13.3524 16.3352 13.3454 16.2438 13.3946Z" fill="#0078D4" />
+    <path d="M7.43329 16.9735C6.80751 16.5868 6.2661 16.0735 5.8372 15.4759 3.98798 12.9446 4.54345 9.39385 7.0747 7.54463 7.34189 7.35479 7.6161 7.179 7.91142 7.03838 8.12939 6.93291 8.50204 6.7501 9.00126 6.75713 9.71142 6.76416 10.3794 7.10166 10.8083 7.67119 11.0895 8.05088 11.2513 8.50791 11.2583 8.98604 11.2583 8.97197 12.9809 3.38916 5.63329 3.38916 2.54657 3.38916 0.00829232 6.32119 0.00829232 8.8876 -0.00577018 10.2446 0.289542 11.5946 0.859074 12.8251 2.7997 16.9595 7.5247 18.9845 11.8559 17.5431 10.3724 18.0071 8.75517 17.8032 7.43329 16.9735Z" fill="#1B9DE2" />
+    <path d="M10.7086 10.4695C10.6523 10.5398 10.4766 10.6453 10.4766 10.8703 10.4766 11.0531 10.5961 11.2289 10.807 11.3766 11.8195 12.0797 13.725 11.9883 13.732 11.9883 14.4844 11.9883 15.2156 11.7844 15.8625 11.4047 17.1844 10.6312 18 9.21797 18 7.68516 18.0211 6.11016 17.4375 5.0625 17.2055 4.59844 15.7148 1.68047 12.4945 0 9 0 4.07812 0 0.0703125 3.95156 0 8.87344 0.0351562 6.30703 2.5875 4.23281 5.625 4.23281 5.87109 4.23281 7.27734 4.25391 8.57812 4.94297 9.72422 5.54766 10.3289 6.27187 10.7438 6.99609 11.1797 7.74844 11.257 8.69062 11.257 9.07031 11.257 9.44297 11.0672 10.0055 10.7086 10.4695Z" fill="#36C752" />
+  </svg>
+);
+
+const BraveIcon: React.FC = () => (
+  <svg viewBox="0 0 48 48" className="w-12 h-12" xmlns="http://www.w3.org/2000/svg">
+    <path d="M24 2 L36 10 L36 22 C36 32 30 38 24 42 C18 38 12 32 12 22 L12 10 Z" fill="#FB542B" />
+    <path d="M24 12 L28 20 L34 16 L30 24 L24 34 L18 24 L14 16 L20 20 Z" fill="white" />
+    <circle cx="19.5" cy="21" r="2.5" fill="#FB542B" />
+    <circle cx="28.5" cy="21" r="2.5" fill="#FB542B" />
+    <path d="M16 8 L14 14 L20 12 Z" fill="#FB542B" />
+    <path d="M32 8 L34 14 L28 12 Z" fill="#FB542B" />
+  </svg>
+);
+
 const InvitePage: React.FC = () => {
   const [refUsername, setRefUsername] = useState("");
   const [emails, setEmails] = useState("");
@@ -157,51 +176,58 @@ const InvitePage: React.FC = () => {
 
           {/* Browser cards */}
           <div className="grid md:grid-cols-3 gap-4 mb-12">
-            {[
-              {
-                name: "Google Chrome",
-                icon: "https://www.google.com/chrome/static/images/chrome-logo.svg",
-                url: STORE_URLS.chrome,
-                color: "hover:border-blue-300",
-              },
-              {
-                name: "Microsoft Edge",
-                icon: "https://edge.microsoft.com/favicon.ico",
-                url: STORE_URLS.edge,
-                color: "hover:border-blue-400",
-              },
-              {
-                name: "Brave",
-                icon: "https://brave.com/static-assets/images/brave-logo.svg",
-                url: STORE_URLS.brave,
-                color: "hover:border-orange-300",
-              },
-            ].map((browser) => (
-              <a
-                key={browser.name}
-                href={browser.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`flex flex-col items-center gap-3 p-6 bg-white rounded-2xl border border-gray-200 shadow-sm ${browser.color} transition-all hover:shadow-md hover:-translate-y-0.5`}
-              >
-                <img
-                  src={browser.icon}
-                  alt={browser.name}
-                  className="w-12 h-12"
-                  onError={(e) => {
-                    (e.target as HTMLImageElement).src =
-                      "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24' fill='%236C5CE7'><circle cx='12' cy='12' r='10'/></svg>";
-                  }}
-                />
-                <span className="font-semibold text-gray-800">
-                  {browser.name}
-                </span>
-                <span className="flex items-center gap-1 text-sm text-[#6C5CE7] font-medium">
-                  <ArrowSquareOut className="w-4 h-4" />
-                  Add to {browser.name.split(" ")[0]}
-                </span>
-              </a>
-            ))}
+            {/* Chrome */}
+            <a
+              href={STORE_URLS.chrome}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center gap-3 p-6 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-300 transition-all hover:shadow-md hover:-translate-y-0.5"
+            >
+              <img
+                src="https://www.google.com/chrome/static/images/chrome-logo.svg"
+                alt="Google Chrome"
+                className="w-12 h-12"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src =
+                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%234285F4'/%3E%3C/svg%3E";
+                }}
+              />
+              <span className="font-semibold text-gray-800">Google Chrome</span>
+              <span className="flex items-center gap-1 text-sm text-[#6C5CE7] font-medium">
+                <ArrowSquareOut className="w-4 h-4" />
+                Add to Chrome
+              </span>
+            </a>
+
+            {/* Edge */}
+            <a
+              href={STORE_URLS.edge}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center gap-3 p-6 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-400 transition-all hover:shadow-md hover:-translate-y-0.5"
+            >
+              <EdgeIcon />
+              <span className="font-semibold text-gray-800">Microsoft Edge</span>
+              <span className="flex items-center gap-1 text-sm text-[#6C5CE7] font-medium">
+                <ArrowSquareOut className="w-4 h-4" />
+                Add to Edge
+              </span>
+            </a>
+
+            {/* Brave */}
+            <a
+              href={STORE_URLS.brave}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center gap-3 p-6 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-orange-300 transition-all hover:shadow-md hover:-translate-y-0.5"
+            >
+              <BraveIcon />
+              <span className="font-semibold text-gray-800">Brave</span>
+              <span className="flex items-center gap-1 text-sm text-[#6C5CE7] font-medium">
+                <ArrowSquareOut className="w-4 h-4" />
+                Add to Brave
+              </span>
+            </a>
           </div>
 
           {/* Email invite section */}

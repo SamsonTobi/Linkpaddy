@@ -14,6 +14,8 @@ import {
   where,
   getDocs,
   deleteDoc,
+  limit,
+  orderBy,
 } from "firebase/firestore";
 import { requireMatchingAuthUser } from "./authState";
 
@@ -125,13 +127,73 @@ export async function signIn() {
     if (!userDoc.exists()) {
       const username = await generateUniqueUsername(user.displayName);
 
+      // Auto-add founder as the new user's first friend
+      const autoFriends: any[] = [];
+      try {
+        // Try by username first, fall back to email in case username changes
+        let founderSnapshot = await getDocs(
+          query(collection(db, "users"), where("username", "==", "samsontobie")),
+        );
+
+        if (founderSnapshot.empty) {
+          founderSnapshot = await getDocs(
+            query(collection(db, "users"), where("email", "==", "samsonadebowale890@gmail.com")),
+          );
+        }
+
+        if (!founderSnapshot.empty) {
+          const founderDoc = founderSnapshot.docs[0];
+          const founderData = founderDoc.data();
+          const founderUid = founderDoc.id;
+          const founderUsername =
+            typeof founderData.username === "string" ? founderData.username : "samsontobie";
+          const now = new Date().toISOString();
+
+          autoFriends.push({
+            uid: founderUid,
+            username: founderUsername,
+            displayName:
+              typeof founderData.displayName === "string"
+                ? founderData.displayName
+                : "",
+            email:
+              typeof founderData.email === "string" ? founderData.email : "",
+            photoURL:
+              typeof founderData.photoURL === "string"
+                ? founderData.photoURL
+                : "",
+            addedAt: now,
+            status: "auto",
+          });
+
+          // Add the new user to the founder's friends list
+          const rawFounderFriends = Array.isArray(founderData.friends)
+            ? founderData.friends
+            : [];
+          rawFounderFriends.push({
+            uid: user.uid,
+            username,
+            displayName: user.displayName || "",
+            email: user.email || "",
+            photoURL: user.photoURL || "",
+            addedAt: now,
+            status: "auto",
+          });
+          await updateDoc(doc(db, "users", founderUid), {
+            friends: rawFounderFriends,
+          });
+        }
+      } catch (e) {
+        console.warn("Failed to auto-add founder friend:", e);
+      }
+
       userData = {
         uid: user.uid,
         email: user.email,
         username: username,
         displayName: user.displayName,
         photoURL: user.photoURL,
-        friends: [],
+        friends: autoFriends,
         pendingInvites: [],
         isNewUser: true, // Explicitly set this flag
       };
@@ -333,32 +395,38 @@ export async function deleteUser(uid: string) {
 }
 
 export async function searchUserInternal(searchTerm: string) {
-  const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
+  const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "").toLowerCase();
   if (!normalizedSearchTerm) return { success: false, error: "Invalid search term" };
 
   try {
     await requireMatchingAuthUser();
 
-    const q = query(collection(db, "users"), where("username", "==", normalizedSearchTerm));
+    // Prefix match: find usernames that start with the typed term
+    const q = query(
+      collection(db, "users"),
+      where("username", ">=", normalizedSearchTerm),
+      where("username", "<", normalizedSearchTerm + "\uf8ff"),
+      orderBy("username"),
+      limit(10),
+    );
     const querySnapshot = await getDocs(q);
 
     if (querySnapshot.empty) {
       return { success: false, error: "User not found" };
     }
 
-    const userDoc = querySnapshot.docs[0];
-    const userData = userDoc.data();
-    
-    // Omit sensitive data
-    return {
-      success: true,
-      user: {
+    // Return all prefix-matching results
+    const users = querySnapshot.docs.map((userDoc) => {
+      const userData = userDoc.data();
+      return {
         uid: userDoc.id,
         username: userData.username,
         displayName: userData.displayName,
         photoURL: userData.photoURL,
-      }
-    };
+      };
+    });
+
+    return { success: true, users };
   } catch (error) {
     console.error("Error searching user:", error);
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" };
@@ -399,10 +467,93 @@ export async function updateUsernameInternal(uid: string, nextUsername: string) 
     if (!existing.empty) {
       return { success: false, error: "Username already taken" };
     }
+
     const userRef = doc(db, "users", uid);
+    const userSnap = await getDoc(userRef);
+    if (!userSnap.exists()) {
+      return { success: false, error: "User not found" };
+    }
+
+    const userData = userSnap.data();
+    const oldUsername = normalizeUsername(userData.username);
+    const latestDisplayName = typeof userData.displayName === "string" ? userData.displayName : "";
+    const latestPhotoURL = typeof userData.photoURL === "string" ? userData.photoURL : "";
+
+    // Update the user's own doc with the new username
     await updateDoc(userRef, { username: nextUsername });
+
+    // Fire-and-forget: propagate to every user who references this uid
+    // in their friends array, receivedLinks sender fields, or sharedLinks recipients.
+    void (async () => {
+      try {
+        const allUsersSnapshot = await getDocs(collection(db, "users"));
+
+        allUsersSnapshot.docs.forEach(async (snapshotDoc) => {
+          if (snapshotDoc.id === uid) return;
+
+          const data = snapshotDoc.data();
+          const targetRef = doc(db, "users", snapshotDoc.id);
+          const rawFriends: any[] = Array.isArray(data.friends) ? data.friends : [];
+          const rawReceived: any[] = Array.isArray(data.receivedLinks) ? data.receivedLinks : [];
+          const rawShared: any[] = Array.isArray(data.sharedLinks) ? data.sharedLinks : [];
+
+          let needsUpdate = false;
+
+          const nextFriends = rawFriends.map((f: any) => {
+            const fUid = typeof f.uid === "string" ? f.uid.trim() : "";
+            if (fUid !== uid) return f;
+            needsUpdate = true;
+            return {
+              ...f,
+              username: nextUsername,
+              displayName: latestDisplayName || f.displayName || "",
+              photoURL: latestPhotoURL || f.photoURL || "",
+            };
+          });
+
+          const nextReceived = rawReceived.map((link: any) => {
+            if (typeof link.sender === "string" && normalizeUsername(link.sender) === oldUsername) {
+              needsUpdate = true;
+              return { ...link, sender: nextUsername };
+            }
+            return link;
+          });
+
+          const nextShared = rawShared.map((link: any) => {
+            if (!Array.isArray(link.recipients)) return link;
+            const idx = link.recipients.findIndex(
+              (r: string) => normalizeUsername(r) === oldUsername,
+            );
+            if (idx < 0) return link;
+            needsUpdate = true;
+            const newRecipients = [...link.recipients];
+            newRecipients[idx] = nextUsername;
+            return { ...link, recipients: newRecipients };
+          });
+
+          if (needsUpdate) {
+            await updateDoc(targetRef, {
+              ...(nextFriends.some((f, i) => f !== rawFriends[i]) ? { friends: nextFriends } : {}),
+              ...(nextReceived.some((l, i) => l !== rawReceived[i]) ? { receivedLinks: nextReceived } : {}),
+              ...(nextShared.some((l, i) => l !== rawShared[i]) ? { sharedLinks: nextShared } : {}),
+            }).catch((e) => {
+              console.warn(
+                `Skipped username propagation to ${snapshotDoc.id} (permission denied or doc changed):`,
+                e,
+              );
+            });
+          }
+        });
+      } catch (propagationError) {
+        console.warn("Username propagation sweep failed:", propagationError);
+      }
+    })();
+
     return { success: true };
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : "Failed to update username" };
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to update username",
+    };
   }
 }

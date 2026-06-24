@@ -14,7 +14,7 @@ interface SharedLink {
   recipients: string[];
   timestamp: string;
   status: "unseen" | "seen" | "opened";
-  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed";
+  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed" | "auto_friend_added";
   senderProfile?: {
     uid: string;
     displayName: string;
@@ -29,7 +29,7 @@ interface ReceivedLink {
   sender: string;
   timestamp: string;
   status: "unseen" | "seen" | "opened";
-  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed";
+  kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed" | "auto_friend_added";
   senderProfile?: {
     uid: string;
     displayName: string;
@@ -45,7 +45,7 @@ interface Friend {
   email: string;
   photoURL: string;
   addedAt: string;
-  status?: "accepted" | "request_sent" | "request_received";
+  status?: "accepted" | "request_sent" | "request_received" | "auto";
 }
 
 interface UserSettings {
@@ -68,7 +68,7 @@ interface AuthContextType {
   isLoading: boolean;
   error: string | null;
   addFriend: (friendUsername: string, friendUid?: string) => Promise<void>;
-  searchUser: (username: string) => Promise<ExtendedUser | null>;
+  searchUser: (username: string) => Promise<ExtendedUser[]>;
   removeFriend: (friendUsername: string) => Promise<void>;
   shareLink: (link: string, selectedFriends: string[]) => Promise<void>;
   updateLinkStatus: (
@@ -487,12 +487,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const searchUser = async (
     searchTerm: string,
-  ): Promise<ExtendedUser | null> => {
+  ): Promise<ExtendedUser[]> => {
     try {
       const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
-      if (!normalizedSearchTerm) return null;
+      if (!normalizedSearchTerm) return [];
 
-      const response = await new Promise<{ success: boolean; user?: ExtendedUser; error?: string }>((resolve, reject) => {
+      const response = await new Promise<{ success: boolean; users?: ExtendedUser[]; error?: string }>((resolve, reject) => {
         chrome.runtime.sendMessage(
           { type: "SEARCH_USER", searchTerm: normalizedSearchTerm },
           (res) => {
@@ -507,12 +507,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (!response || !response.success) {
         if (response && response.error === "User not found") {
-          return null; // Return null if not found instead of throwing error
+          return [];
         }
         throw new Error((response && response.error) || "Failed to search for user");
       }
 
-      return response.user || null;
+      return response.users || [];
     } catch (error) {
       console.error("Error searching for user:", error);
       throw new Error("Failed to search for user");

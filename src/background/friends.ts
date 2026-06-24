@@ -112,7 +112,7 @@ function buildCanonicalFriend(
   friendUid: string,
   friendData: Record<string, unknown>,
   addedAt: string,
-  status?: "accepted" | "request_sent" | "request_received",
+  status?: "accepted" | "request_sent" | "request_received" | "auto",
 ): Friend {
   const normalizedUsername = normalizeUsername(friendData.username);
   if (!normalizedUsername) {

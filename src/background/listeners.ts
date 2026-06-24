@@ -14,9 +14,9 @@ function ensureCheckNewLinksAlarm() {
   chrome.alarms.create(CHECK_NEW_LINKS_ALARM, { periodInMinutes: 0.5 });
 }
 
-function triggerQuickSync(reason: string) {
+function triggerQuickSync(reason: string, skipThrottle = false) {
   const now = Date.now();
-  if (now - lastQuickSyncAt < QUICK_SYNC_THROTTLE_MS) {
+  if (!skipThrottle && now - lastQuickSyncAt < QUICK_SYNC_THROTTLE_MS) {
     return;
   }
 
@@ -84,7 +84,7 @@ export function registerBackgroundListeners() {
   chrome.runtime.onConnect.addListener((port) => {
     if (port.name === "popup") {
       console.log("Popup opened, refreshing data...");
-      triggerQuickSync("popupConnected");
+      triggerQuickSync("popupConnected", true);
 
       // Keep refreshing while popup is open (every 5 seconds)
       const intervalId = setInterval(() => {
