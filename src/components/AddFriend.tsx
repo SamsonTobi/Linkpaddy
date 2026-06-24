@@ -60,6 +60,15 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     return (currentUser?.friends || []).filter((f) => f.status === "auto");
   }, [currentUser?.friends]);
 
+  const existingFriendKeys = useMemo(() => {
+    const keys = new Set<string>();
+    (currentUser?.friends || []).forEach((f) => {
+      if (f.uid) keys.add(f.uid);
+      if (f.username) keys.add(f.username.toLowerCase());
+    });
+    return keys;
+  }, [currentUser?.friends]);
+
   const showWelcomeCard =
     !searchTerm.trim() &&
     autoFriends.length > 0 &&
@@ -236,31 +245,42 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
                 {searchResults.map((result) => {
                   const key = result.uid || result.username || result.email;
                   const isThisAdding = addingKey === key;
+                  const alreadyFriend =
+                    (result.uid && existingFriendKeys.has(result.uid)) ||
+                    (result.username && existingFriendKeys.has(result.username.toLowerCase()));
                   return (
                     <div
                       key={key}
                       className="flex items-center justify-between p-3 bg-gray-50 rounded-lg"
                     >
-                      <div>
-                        <p className="font-medium outfit-medium text-sm">
-                          {result.email || result.username}
+                      <div className="min-w-0 flex-1 mr-2">
+                        <p className="font-medium outfit-medium text-sm truncate">
+                          {result.username
+                            ? `@${result.username}`
+                            : result.email || "Unknown user"}
                         </p>
-                        {result.username && (
-                          <p className="text-sm outfit-normal text-gray-500">
-                            @{result.username}
+                        {result.email && result.username && (
+                          <p className="text-xs outfit-normal text-gray-400 truncate">
+                            {result.email}
                           </p>
                         )}
                       </div>
-                      <CustomButton
-                        onClick={() => handleAddFriend(result)}
-                        disabled={!!addingKey}
-                        variant="primary"
-                        size="sm"
-                        showArrow={false}
-                        trailingIcon={<UserPlus className="w-4 h-4" />}
-                      >
-                        {isThisAdding ? "Adding..." : "Add Friend"}
-                      </CustomButton>
+                      {alreadyFriend ? (
+                        <span className="text-xs font-medium text-green-600 bg-green-50 px-3 py-1.5 rounded-full shrink-0">
+                          Already friends
+                        </span>
+                      ) : (
+                        <CustomButton
+                          onClick={() => handleAddFriend(result)}
+                          disabled={!!addingKey}
+                          variant="primary"
+                          size="sm"
+                          showArrow={false}
+                          trailingIcon={<UserPlus className="w-4 h-4" />}
+                        >
+                          {isThisAdding ? "Adding..." : "Add Friend"}
+                        </CustomButton>
+                      )}
                     </div>
                   );
                 })}

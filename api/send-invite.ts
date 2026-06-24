@@ -7,7 +7,7 @@ interface InviteBody {
 }
 
 const resendApiKey = process.env.RESEND_API_KEY || "";
-const fromAddress = process.env.RESEND_FROM_ADDRESS || "invites@linkpaddy.com";
+const fromAddress = process.env.RESEND_FROM_ADDRESS || "friends@linkpaddy.com";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

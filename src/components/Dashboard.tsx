@@ -884,7 +884,7 @@ const Dashboard: React.FC = () => {
           </div>
         )}
         {activeTab === "friends" && (
-          <div className="space-y-4 h-full">
+          <div className="space-y-4 h-full pb-4">
             <div className="space-y-2 h-full">
               {isRefreshingFriends && (
                 <div className="flex items-center gap-2 py-1.5 px-3 text-xs text-gray-500 bg-gray-50 rounded-lg">
@@ -1129,7 +1129,7 @@ const Dashboard: React.FC = () => {
               {isMac ? (
                 <span className="font-semibold">Alt+Shift+L</span>
               ) : (
-                <span className="font-semibold">Ctrl+Shift+L</span>
+                <span className="font-semibold">Ctrl+Space</span>
               )}
               <span className="opacity-70"> to send the current tab</span>
             </span>

@@ -401,28 +401,34 @@ export async function searchUserInternal(searchTerm: string) {
   try {
     await requireMatchingAuthUser();
 
-    // Prefix match: find usernames that start with the typed term
+    // Use orderBy + client-side startsWith to avoid Firestore composite-index requirement
     const q = query(
       collection(db, "users"),
-      where("username", ">=", normalizedSearchTerm),
-      where("username", "<", normalizedSearchTerm + "\uf8ff"),
       orderBy("username"),
-      limit(10),
+      limit(25),
     );
     const querySnapshot = await getDocs(q);
 
-    if (querySnapshot.empty) {
+    // Filter to users whose username starts with the search term
+    const matchingUsers = querySnapshot.docs
+      .filter((doc) => {
+        const username = doc.data().username || "";
+        return username.toLowerCase().startsWith(normalizedSearchTerm);
+      })
+      .slice(0, 10);
+
+    if (matchingUsers.length === 0) {
       return { success: false, error: "User not found" };
     }
 
-    // Return all prefix-matching results
-    const users = querySnapshot.docs.map((userDoc) => {
+    const users = matchingUsers.map((userDoc) => {
       const userData = userDoc.data();
       return {
         uid: userDoc.id,
         username: userData.username,
         displayName: userData.displayName,
         photoURL: userData.photoURL,
+        email: userData.email,
       };
     });
 
