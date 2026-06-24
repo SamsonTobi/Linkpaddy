@@ -12,11 +12,17 @@ import {
   CaretDown,
   UserPlus,
   Spinner,
+  X,
+  ClipboardText,
+  PaperPlaneTilt,
 } from "@phosphor-icons/react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
 import AddFriend from "./AddFriend";
 import CustomButton from "./ui/CustomButton";
+import { inviteIllus } from "../assets/image";
+
+const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
 interface LinkPreview {
   title?: string;
@@ -115,7 +121,101 @@ const Dashboard: React.FC = () => {
     {},
   );
   const [isRefreshingFriends, setIsRefreshingFriends] = useState(false);
-  const [welcomeCardDismissed, setWelcomeCardDismissed] = useState(false);
+  const [showShortcutTip, setShowShortcutTip] = useState(false);
+
+  // Invite state (for the "Bring your friends aboard" card)
+  const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [inviteEmails, setInviteEmails] = useState("");
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteLinkCopied, setInviteLinkCopied] = useState(false);
+
+  // Detect platform
+  const isMac = ((): boolean => {
+    try {
+      return /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+    } catch {
+      return false;
+    }
+  })();
+
+  // Show shortcut tip once (persisted)
+  useEffect(() => {
+    chrome.storage.local.get(["shortcutTipShown"], (result) => {
+      if (!result.shortcutTipShown) {
+        setShowShortcutTip(true);
+      }
+    });
+  }, []);
+
+  const dismissShortcutTip = () => {
+    setShowShortcutTip(false);
+    chrome.storage.local.set({ shortcutTipShown: true });
+  };
+
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  const handleOpenInviteDialog = () => {
+    setInviteError(null);
+    setShowInviteDialog(true);
+  };
+
+  const handleCopyInviteLink = () => {
+    const username = currentUser?.username || "";
+    const inviteUrl = `${extensionLandingLink}invite?ref=${encodeURIComponent("@" + username)}`;
+    navigator.clipboard.writeText(inviteUrl).then(() => {
+      setInviteLinkCopied(true);
+      setTimeout(() => setInviteLinkCopied(false), 2500);
+    }).catch(() => {
+      const textarea = document.createElement("textarea");
+      textarea.value = inviteUrl;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      setInviteLinkCopied(true);
+      setTimeout(() => setInviteLinkCopied(false), 2500);
+    });
+  };
+
+  const handleSendInviteEmail = () => {
+    const recipients = inviteEmails
+      .split(/[;,\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+
+    if (recipients.length === 0) {
+      setInviteError("Enter at least one email address.");
+      return;
+    }
+
+    const invalid = recipients.filter((e) => !isValidEmail(e));
+    if (invalid.length > 0) {
+      setInviteError(`Invalid email(s): ${invalid.join(", ")}`);
+      return;
+    }
+
+    const inviterName = currentUser?.displayName || currentUser?.username || "Your friend";
+    const inviterUsername = currentUser?.username || "";
+    const subject = `${inviterName} invited you to LinkPaddy`;
+    const body = `Hey,\n\n${inviterName} invited you to LinkPaddy so you can share links together.\n\nGet the extension for your browser: ${extensionLandingLink}\n\nAfter signing up, add your friend with this username: @${inviterUsername}\n\nIf you already know your friend's email, you can also add them directly by email in the app.\n\nSee you there!`;
+    const mailtoUrl = `mailto:${recipients.join(",")}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+    const openFallback = () => {
+      try { window.open(mailtoUrl, "_blank"); } catch { window.location.href = mailtoUrl; }
+    };
+
+    if (typeof chrome !== "undefined" && chrome.tabs?.create) {
+      chrome.tabs.create({ url: mailtoUrl }, () => {
+        if (chrome.runtime.lastError) openFallback();
+      });
+    } else {
+      openFallback();
+    }
+
+    setShowInviteDialog(false);
+    setInviteEmails("");
+    setInviteError(null);
+  };
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
 
@@ -198,12 +298,6 @@ const Dashboard: React.FC = () => {
   const acceptedFriends = useMemo(() => {
     return uniqueFriends.filter((f) => !f.status || f.status === "accepted" || f.status === "auto");
   }, [uniqueFriends]);
-
-  const autoFriends = useMemo(() => {
-    return uniqueFriends.filter((f) => f.status === "auto");
-  }, [uniqueFriends]);
-
-  const showWelcomeCard = autoFriends.length > 0 && !welcomeCardDismissed;
 
   const pendingReceivedRequests = useMemo(() => {
     const byUsername = new Map<string, (typeof uniqueFriends)[number]>();
@@ -798,56 +892,6 @@ const Dashboard: React.FC = () => {
                   Refreshing friend profiles...
                 </div>
               )}
-
-              {showWelcomeCard && (
-                <div className="bg-gradient-to-br from-[#F5F3FF] to-indigo-50 rounded-xl p-5 border border-indigo-100 relative">
-                  <button
-                    onClick={() => setWelcomeCardDismissed(true)}
-                    className="absolute top-3 right-3 p-1 hover:bg-indigo-100 rounded-full text-gray-400"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                  {autoFriends.map((friend) => (
-                    <div key={friend.uid || friend.username} className="flex items-center gap-4 mb-3">
-                      <img
-                        src={friend.photoURL || "/default-avatar.png"}
-                        alt={`${friend.displayName}'s avatar`}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
-                      />
-                      <div>
-                        <p className="font-semibold text-base outfit-semibold text-gray-900">
-                          @{friend.username}
-                        </p>
-                        <p className="text-sm text-gray-500 outfit-normal">
-                          Your first friend
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  <p className="text-sm text-gray-600 outfit-normal mb-4">
-                    I'm the founder of LinkPaddy. I was automatically added to your circle so you have someone to share with right away. Welcome aboard!
-                  </p>
-                  <div className="flex gap-3">
-                    <CustomButton
-                      onClick={() => setShowAddFriend(true)}
-                      variant="primary"
-                      size="sm"
-                      showArrow={false}
-                      trailingIcon={<UserPlus className="w-4 h-4" />}
-                    >
-                      Add more friends
-                    </CustomButton>
-                    <CustomButton
-                      onClick={() => { setWelcomeCardDismissed(true); setActiveTab("links"); }}
-                      variant="neutral"
-                      size="sm"
-                      showArrow={false}
-                    >
-                      Continue
-                    </CustomButton>
-                  </div>
-                </div>
-              )}
               {acceptedFriends.length > 0 || pendingReceivedRequests.length > 0 || pendingSentRequests.length > 0 ? (
                 <div className="w-full">
                   <CustomButton
@@ -1030,10 +1074,138 @@ const Dashboard: React.FC = () => {
                   </CustomButton>
                 </div>
               )}
+              <div className="bg-[#F5DD90] rounded-lg px-5 py-6 relative overflow-hidden mt-5">
+                <div className="flex">
+                  <div className="w-3/5">
+                    <h3 className="text-lg font-semibold outfit-semibold">
+                      Bring your friends aboard
+                    </h3>
+                    <p className="text-gray-700 outfit-normal mb-4">
+                      Turn everyday links into shared discoveries with friends
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <CustomButton
+                        onClick={handleOpenInviteDialog}
+                        variant="onPrimary"
+                        size="sm"
+                        className="text-[#22162B]"
+                        showArrow={false}
+                        trailingIcon={<UserPlus className="w-4 h-4" />}
+                      >
+                        Invite some friends
+                      </CustomButton>
+                      <CustomButton
+                        onClick={handleCopyInviteLink}
+                        variant="ghost"
+                        size="sm"
+                        className="text-[#22162B] border border-[#22162B]/20 hover:bg-[#22162B]/10"
+                        showArrow={false}
+                        trailingIcon={<ClipboardText className="w-4 h-4" />}
+                      >
+                        {inviteLinkCopied ? "Copied!" : "Copy invite link"}
+                      </CustomButton>
+                    </div>
+                  </div>
+                  <div className="w-36 absolute -bottom-1.5 right-0">
+                    <img
+                      src={inviteIllus}
+                      alt="Link sharing illustration"
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {showShortcutTip && (
+        <div className="absolute bottom-0 left-0 right-0 bg-gray-900 text-white py-3 px-4 flex items-center justify-between gap-3 z-10 rounded-t-xl shadow-lg">
+          <div className="flex items-center gap-2 text-sm outfit-normal min-w-0">
+            <svg className="w-5 h-5 shrink-0 text-[#A78BFA]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 17 20 12 15 7"></polyline><path d="M4 12h16"></path></svg>
+            <span className="truncate">
+              <span className="opacity-70">Quick share: Press </span>
+              {isMac ? (
+                <span className="font-semibold">Alt+Shift+L</span>
+              ) : (
+                <span className="font-semibold">Ctrl+Shift+L</span>
+              )}
+              <span className="opacity-70"> to send the current tab</span>
+            </span>
+          </div>
+          <button
+            onClick={dismissShortcutTip}
+            className="p-1 hover:bg-white/10 rounded-full shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {showInviteDialog && (
+        <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold outfit-semibold text-gray-900">
+                Invite Friends By Email
+              </h3>
+              <button
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setInviteError(null);
+                }}
+                className="p-1 hover:bg-gray-100 rounded-full"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 outfit-normal mb-3">
+              Enter your friends' emails. We'll open your mail app with
+              pre-written text, the extension link, and your username.
+            </p>
+
+            <textarea
+              value={inviteEmails}
+              onChange={(e) => {
+                setInviteEmails(e.target.value);
+                if (inviteError) setInviteError(null);
+              }}
+              placeholder="friend1@email.com, friend2@email.com"
+              className="w-full min-h-24 resize-none border border-gray-200 rounded-lg p-3 text-sm outfit-normal focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]"
+            />
+
+            {inviteError && (
+              <p className="text-red-500 text-xs outfit-normal mt-2">
+                {inviteError}
+              </p>
+            )}
+
+            <div className="flex gap-3 justify-end mt-5">
+              <CustomButton
+                onClick={() => {
+                  setShowInviteDialog(false);
+                  setInviteError(null);
+                }}
+                variant="neutral"
+                showArrow={false}
+              >
+                Cancel
+              </CustomButton>
+              <CustomButton
+                onClick={handleSendInviteEmail}
+                variant="primary"
+                className="outfit-semibold"
+                showArrow={false}
+                trailingIcon={<PaperPlaneTilt className="w-4 h-4" />}
+              >
+                Continue To Email
+              </CustomButton>
+            </div>
+          </div>
+        </div>
+      )}
 
       {friendToRemove && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">

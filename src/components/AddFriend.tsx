@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
@@ -43,7 +43,7 @@ const Toast: React.FC<ToastProps> = ({ message, type }) => (
 );
 
 const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
-  const { searchUser, addFriend } = useAuth();
+  const { searchUser, addFriend, currentUser } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +54,17 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   } | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [addingKey, setAddingKey] = useState<string | null>(null);
+  const [welcomeCardDismissed, setWelcomeCardDismissed] = useState(false);
+
+  const autoFriends = useMemo(() => {
+    return (currentUser?.friends || []).filter((f) => f.status === "auto");
+  }, [currentUser?.friends]);
+
+  const showWelcomeCard =
+    !searchTerm.trim() &&
+    autoFriends.length > 0 &&
+    (currentUser?.friends || []).filter((f) => f.status !== "auto").length === 0 &&
+    !welcomeCardDismissed;
 
   useEffect(() => {
     if (searchTerm) {
@@ -176,6 +187,37 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
             <ArrowElbowDownLeft className="w-3 h-3 mr-3 text-gray-500" />
             <p className="text-xs text-gray-500 outfit-normal">
               Press enter to search
+            </p>
+          </div>
+        )}
+
+        {showWelcomeCard && (
+          <div className="mt-4 bg-gradient-to-br from-[#F5F3FF] to-indigo-50 rounded-xl p-5 border border-indigo-100 relative">
+            <button
+              onClick={() => setWelcomeCardDismissed(true)}
+              className="absolute top-3 right-3 p-1 hover:bg-indigo-100 rounded-full text-gray-400"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+            {autoFriends.map((friend) => (
+              <div key={friend.uid || friend.username} className="flex items-center gap-4 mb-3">
+                <img
+                  src={friend.photoURL || "/default-avatar.png"}
+                  alt={`${friend.displayName}'s avatar`}
+                  className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"
+                />
+                <div>
+                  <p className="font-semibold text-base outfit-semibold text-gray-900">
+                    @{friend.username}
+                  </p>
+                  <p className="text-sm text-gray-500 outfit-normal">
+                    Your first friend
+                  </p>
+                </div>
+              </div>
+            ))}
+            <p className="text-sm text-gray-600 outfit-normal mb-4">
+              I'm the founder of LinkPaddy. I was automatically added to your circle so you have someone to share with right away. Welcome aboard!
             </p>
           </div>
         )}
