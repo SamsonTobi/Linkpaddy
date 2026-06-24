@@ -7,7 +7,7 @@ interface InviteBody {
 }
 
 const resendApiKey = process.env.RESEND_API_KEY || "";
-const fromAddress = process.env.RESEND_FROM_ADDRESS || "friends@linkpaddy.com";
+const fromAddress = process.env.RESEND_FROM_ADDRESS || "noreply@linkpaddy.samsontobi.tech";
 
 const isValidEmail = (email: string) =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -86,12 +86,17 @@ export default async function handler(
 
     if (error) {
       console.error("Resend error:", error);
-      return res.status(500).json({ error: "Failed to send invites." });
+      return res.status(500).json({
+        error: error.message || "Failed to send invites. Check your Resend configuration.",
+        detail: JSON.stringify(error),
+      });
     }
 
     return res.status(200).json({ success: true, id: data?.id });
   } catch (err) {
     console.error("Email send error:", err);
-    return res.status(500).json({ error: "Failed to send invites." });
+    return res.status(500).json({
+      error: err instanceof Error ? err.message : "Failed to send invites.",
+    });
   }
 }

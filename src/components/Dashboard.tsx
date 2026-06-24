@@ -812,7 +812,7 @@ const Dashboard: React.FC = () => {
                       return (
                         <div
                           key={`${link.type}-${group.label}-${index}`}
-                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors"
+                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors mb-2"
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Link Preview Image */}
