@@ -85,7 +85,7 @@ export default async function handler(
 
   try {
     const { data, error } = await resend.emails.send({
-      from: fromAddress,
+      from: `LinkPaddy <${fromAddress}>`,
       to: emails,
       subject: ref
         ? `@${ref.replace(/^@/, "")} invited you to LinkPaddy`
