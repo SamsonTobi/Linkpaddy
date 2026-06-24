@@ -3,6 +3,7 @@ import { AuthProvider } from "./contexts/AuthContext";
 import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 import LandingPage from "./components/LandingPage";
+import InvitePage from "./components/InvitePage";
 import { useAuth } from "./contexts/AuthContext";
 import { Spinner } from "@phosphor-icons/react";
 import Onboarding from "./components/Onboarding";
@@ -94,6 +95,9 @@ const App: React.FC = () => {
     typeof chrome === "undefined" || !chrome.runtime || !chrome.runtime.id;
 
   if (isWebPage) {
+    if (window.location.pathname === "/invite") {
+      return <InvitePage />;
+    }
     return <LandingPage />;
   }
 
