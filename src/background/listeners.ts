@@ -1,6 +1,7 @@
 import { signIn, handleSignOut, deleteUser, searchUserInternal, updateSettingsInternal, updateUsernameInternal, completeOnboardingInternal } from "./auth";
 import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInternal } from "./friends";
 import { checkForNewLinks, updateBadge } from "./sync";
+import { refreshFriendProfiles } from "./friendsSync";
 import { openExtensionUi } from "./ui";
 import { handleUpdateLinkStatusMessage, shareLink } from "./links";
 
@@ -202,6 +203,11 @@ export function registerBackgroundListeners() {
       return true;
     } else if (message.type === "COMPLETE_ONBOARDING") {
       completeOnboardingInternal(message.uid)
+        .then((result) => sendResponse(result))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "REFRESH_FRIEND_PROFILES") {
+      refreshFriendProfiles(message.uid)
         .then((result) => sendResponse(result))
         .catch((error) => sendResponse({ success: false, error: error.message }));
       return true;

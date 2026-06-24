@@ -11,6 +11,7 @@ import {
   FunnelSimple,
   CaretDown,
   UserPlus,
+  Spinner,
 } from "@phosphor-icons/react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
@@ -113,6 +114,7 @@ const Dashboard: React.FC = () => {
   const [linkPreviews, setLinkPreviews] = useState<Record<string, LinkPreview>>(
     {},
   );
+  const [isRefreshingFriends, setIsRefreshingFriends] = useState(false);
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
 
@@ -246,8 +248,30 @@ const Dashboard: React.FC = () => {
           console.warn("Failed to trigger refresh:", chrome.runtime.lastError.message);
         }
       });
+
+      if (currentUser?.uid) {
+        setIsRefreshingFriends(true);
+        chrome.runtime.sendMessage(
+          { type: "REFRESH_FRIEND_PROFILES", uid: currentUser.uid },
+          (response: any) => {
+            setIsRefreshingFriends(false);
+            if (chrome.runtime.lastError) {
+              console.warn("Failed to refresh friend profiles:", chrome.runtime.lastError.message);
+              return;
+            }
+            if (response?.updated && response?.changes?.length > 0) {
+              response.changes.forEach((change: any) => {
+                const msg = change.oldUsername
+                  ? `@${change.oldUsername} → @${change.username} updated their username`
+                  : `@${change.username} updated their profile`;
+                console.log(msg);
+              });
+            }
+          },
+        );
+      }
     }
-  }, [activeTab]);
+  }, [activeTab, currentUser?.uid]);
 
   // Fetch link previews
   useEffect(() => {
@@ -746,6 +770,12 @@ const Dashboard: React.FC = () => {
         {activeTab === "friends" && (
           <div className="space-y-4 h-full">
             <div className="space-y-2 h-full">
+              {isRefreshingFriends && (
+                <div className="flex items-center gap-2 py-1.5 px-3 text-xs text-gray-500 bg-gray-50 rounded-lg">
+                  <Spinner className="w-3.5 h-3.5 animate-spin" />
+                  Refreshing friend profiles...
+                </div>
+              )}
               {acceptedFriends.length > 0 || pendingReceivedRequests.length > 0 || pendingSentRequests.length > 0 ? (
                 <div className="w-full">
                   <CustomButton
