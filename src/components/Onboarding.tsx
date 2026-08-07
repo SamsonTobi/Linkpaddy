@@ -3,10 +3,12 @@ import { PencilSimple, UserPlus } from "@phosphor-icons/react";
 import { useAuth } from "../contexts/AuthContext";
 import OnboardingAddFriends from "./OnboardingAddFriends";
 import CustomButton from "./ui/CustomButton";
+import PinExtension from "./PinExtension";
 
 const Onboarding: React.FC = () => {
   const { currentUser, completeOnboarding, updateUsername } = useAuth();
   const [showAddFriends, setShowAddFriends] = useState(false);
+  const [showPinExtension, setShowPinExtension] = useState(false);
   const [isEditingUsername, setIsEditingUsername] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState(
     currentUser?.username || "",
@@ -55,10 +57,14 @@ const Onboarding: React.FC = () => {
     }
   };
 
+  if (showPinExtension) {
+    return <PinExtension onComplete={handleComplete} isCompleting={isCompleting} />;
+  }
+
   if (showAddFriends) {
     return (
       <OnboardingAddFriends
-        onComplete={handleComplete}
+        onComplete={() => setShowPinExtension(true)}
         isCompleting={isCompleting}
         completionError={completionError}
       />
