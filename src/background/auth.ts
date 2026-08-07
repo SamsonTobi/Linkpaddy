@@ -196,6 +196,9 @@ export async function signIn() {
         friends: autoFriends,
         pendingInvites: [],
         isNewUser: true, // Explicitly set this flag
+        joinedAt: new Date().toISOString(),
+        usernameLowercase: username,
+        settings: { sharingReminders: true },
       };
       await setDoc(userRef, userData);
     } else {
@@ -401,11 +404,13 @@ export async function searchUserInternal(searchTerm: string) {
   try {
     const currentAuthUser = await requireMatchingAuthUser();
 
-    // Use orderBy + client-side startsWith to avoid Firestore composite-index requirement
+    const end = `${normalizedSearchTerm}\uf8ff`;
     const q = query(
       collection(db, "users"),
+      where("username", ">=", normalizedSearchTerm),
+      where("username", "<=", end),
       orderBy("username"),
-      limit(25),
+      limit(10),
     );
     const querySnapshot = await getDocs(q);
 
@@ -414,9 +419,8 @@ export async function searchUserInternal(searchTerm: string) {
       .filter((doc) => {
         if (doc.id === currentAuthUser.uid) return false;
         const data = doc.data();
-        const username = (data.username || "").toLowerCase();
-        const displayName = (data.displayName || "").toLowerCase();
-        return username.startsWith(normalizedSearchTerm) || displayName.startsWith(normalizedSearchTerm);
+        const username = (data.usernameLowercase || data.username || "").toLowerCase();
+        return username.startsWith(normalizedSearchTerm);
       })
       .slice(0, 10);
 
@@ -432,6 +436,7 @@ export async function searchUserInternal(searchTerm: string) {
         displayName: userData.displayName,
         photoURL: userData.photoURL,
         email: userData.email,
+        joinedAt: userData.joinedAt,
       };
     });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
@@ -56,6 +56,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   const [isSearching, setIsSearching] = useState(false);
   const [addingKey, setAddingKey] = useState<string | null>(null);
   const [welcomeCardDismissed, setWelcomeCardDismissed] = useState(false);
+  const searchSequence = useRef(0);
 
   const autoFriends = useMemo(() => {
     return (currentUser?.friends || []).filter((f) => f.status === "auto");
@@ -82,6 +83,25 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     } else {
       setShowSearchPrompt(false);
     }
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const term = searchTerm.trim();
+    if (term.length < 2 || isValidEmail(term)) return;
+    const sequence = ++searchSequence.current;
+    const timer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const users = await searchUser(term);
+        if (sequence !== searchSequence.current) return;
+        setSearchResults(users.map((user) => ({ uid: user.uid, username: user.username || "", email: user.email || "" })));
+      } catch {
+        if (sequence === searchSequence.current) setError("An error occurred while searching");
+      } finally {
+        if (sequence === searchSequence.current) setIsSearching(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
   }, [searchTerm]);
 
   useEffect(() => {
