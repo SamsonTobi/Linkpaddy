@@ -47,3 +47,58 @@ h6 {
   font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   font-weight: 700;
 }
+
+@keyframes share-in {
+  from { opacity: 0; transform: translateY(-28px) scale(0.92); max-height: 0; }
+  45% { opacity: 1; transform: translateY(4px) scale(1.025); max-height: 520px; }
+  72% { transform: translateY(-2px) scale(0.995); }
+  to { opacity: 1; transform: translateY(0) scale(1); max-height: 520px; }
+}
+
+.animate-share-in { animation: share-in 720ms cubic-bezier(0.2, 0.85, 0.3, 1.1) both; }
+
+@keyframes sent-check-in {
+  from { opacity: 0; transform: scale(0.45) rotate(-20deg); }
+  55% { transform: scale(1.18) rotate(4deg); }
+  to { opacity: 1; transform: scale(1) rotate(0); }
+}
+
+@keyframes favicon-reveal {
+  from { opacity: 0; transform: scale(0.4); }
+  70% { transform: scale(1.18); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.sent-check-icon { animation: sent-check-in 420ms ease-out both; }
+.favicon-reveal { animation: favicon-reveal 420ms ease-out both; }
+
+button,
+a,
+label,
+[role="button"],
+.cursor-pointer {
+  transition-property: transform, opacity, color, background-color, border-color;
+  transition-duration: 150ms;
+}
+
+button:active,
+a:active,
+label:active,
+[role="button"]:active,
+.cursor-pointer:active {
+  transform: scale(0.985);
+}
+
+.text-card-preview {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-share-in { animation: none; }
+}
