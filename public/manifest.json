@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
   "permissions": [
@@ -44,7 +44,9 @@
     "https://*.googleapis.com/*",
     "https://*.firebaseio.com/*",
     "https://*.firebase.com/*",
-    "https://firestore.googleapis.com/*"
+    "https://firestore.googleapis.com/*",
+    "https://api.microlink.io/*",
+    "https://www.google.com/*"
   ],
   "oauth2": {
     "client_id": "309540318772-nsj2lle011ifcke7f3l5opp9ql9pr013.apps.googleusercontent.com",
