@@ -51,6 +51,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const [usernameSaved, setUsernameSaved] = useState(false);
 
   const showLinkPreviews = currentUser?.settings?.showLinkPreviews ?? true;
+  const sharingReminders = currentUser?.settings?.sharingReminders ?? true;
 
   useEffect(() => {
     setUsernameDraft(currentUser?.username || "");
@@ -409,6 +410,12 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               />
             </button>
           </div>
+          {[{ label: "Sharing reminders", description: "Occasional prompts, at most once every 3 days", key: "sharingReminders", value: sharingReminders }].map((setting) => (
+            <div key={setting.key} className="flex items-center justify-between mt-3 pt-3 border-t">
+              <div><p className="text-sm font-medium text-gray-800">{setting.label}</p><p className="text-xs text-gray-500">{setting.description}</p></div>
+              <button onClick={() => updateSettings({ [setting.key]: !setting.value })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${setting.value ? "bg-[#6C5CE7]" : "bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${setting.value ? "translate-x-6" : "translate-x-1"}`} /></button>
+            </div>
+          ))}
         </div>
 
         <div className="bg-[#F5DD90] rounded-lg px-5 py-6 relative overflow-hidden">
