@@ -8,7 +8,7 @@ import {
   showFriendRequestReminderNotification,
 } from "./notifications";
 import { Friend, SharedLink } from "./types";
-import { getFriendProfile } from "./friends";
+import { getFriendProfile, resolveFriendRefByUsername } from "./friends";
 import {
   BackgroundAuthNotReadyError,
   requireMatchingAuthUser,
@@ -26,6 +26,65 @@ async function getUserSnapshot(userRef: ReturnType<typeof doc>) {
   }
 }
 
+async function enrichLegacyRecipientData(
+  currentUser: any,
+  userRef: ReturnType<typeof doc>,
+  receivedLinks: SharedLink[],
+): Promise<{ links: SharedLink[]; changed: boolean }> {
+  let changed = false;
+  const links = await Promise.all(
+    receivedLinks.map(async (receivedLink) => {
+      if (receivedLink.kind || receivedLink.recipients?.length || receivedLink.recipientProfiles?.length) {
+        return receivedLink;
+      }
+
+      try {
+        const senderRef = await resolveFriendRefByUsername(receivedLink.sender);
+        if (!senderRef) return receivedLink;
+        const senderSnapshot = await getUserSnapshot(senderRef.ref);
+        const senderData = senderSnapshot.data() || {};
+        const senderLink = (senderData.sharedLinks || []).find(
+          (item: SharedLink) => item.id === receivedLink.id,
+        );
+        if (!senderLink?.recipients?.length) return receivedLink;
+
+        const senderFriends = Array.isArray(senderData.friends) ? senderData.friends : [];
+        const recipientProfiles = senderLink.recipients.map((username: string) => {
+          const friend = senderFriends.find(
+            (candidate: any) => String(candidate.username || "").toLowerCase() === username.toLowerCase(),
+          );
+          const profile: Record<string, string> = {
+            username,
+            displayName: friend?.displayName || username,
+            photoURL: friend?.photoURL || "",
+          };
+          if (typeof friend?.uid === "string" && friend.uid) profile.uid = friend.uid;
+          if (typeof friend?.joinedAt === "string" && friend.joinedAt) profile.joinedAt = friend.joinedAt;
+          return profile;
+        });
+
+        changed = true;
+        return {
+          ...receivedLink,
+          recipients: senderLink.recipients,
+          recipientProfiles,
+          recipientStatuses: senderLink.recipientStatuses || recipientProfiles.map((profile: any) => ({ ...profile, status: "unseen" })),
+        };
+      } catch (error) {
+        console.warn("Could not enrich legacy recipient data:", receivedLink.id, error);
+        return receivedLink;
+      }
+    }),
+  );
+
+  if (changed) {
+    await updateDoc(userRef, { receivedLinks: links });
+    await chrome.storage.local.set({ user: { ...currentUser, receivedLinks: links } });
+  }
+
+  return { links, changed };
+}
+
 async function runLinksSync() {
   const result = await chrome.storage.local.get(["user"]);
   if (!result.user || !result.user.uid) return;
@@ -39,9 +98,16 @@ async function runLinksSync() {
 
   const userData = userSnap.data();
   const oldReceivedLinks: SharedLink[] = result.user.receivedLinks || [];
-  const newReceivedLinks: SharedLink[] = userData.receivedLinks || [];
+  const enrichedReceived = await enrichLegacyRecipientData(
+    result.user,
+    userRef,
+    (userData.receivedLinks || []) as SharedLink[],
+  );
+  const newReceivedLinks: SharedLink[] = enrichedReceived.links;
   const oldFriends: Friend[] = result.user.friends || [];
   const newFriends: Friend[] = userData.friends || [];
+  const oldNotificationIds = new Set((result.user.activityNotifications || []).map((notification: any) => notification.id));
+  const newActivityNotifications = (userData.activityNotifications || []).filter((notification: any) => !oldNotificationIds.has(notification.id));
 
   // Find truly new links by comparing IDs
   const oldLinkIds = new Set(oldReceivedLinks.map((l) => l.id));
@@ -103,6 +169,17 @@ async function runLinksSync() {
   // Show a notification for each new shared link received
   for (const newLink of brandNewShareLinks) {
     showLinkNotification(newLink);
+  }
+  for (const notification of newActivityNotifications) {
+    if (notification.type === "link_liked") {
+      chrome.notifications.create(notification.id, {
+        type: "basic",
+        iconUrl: "icons/icon128.png",
+        title: `${notification.actorFirstName || notification.actorUsername} liked your link`,
+        message: "Open LinkPaddy to see the activity.",
+        priority: 1,
+      });
+    }
   }
 
   // Friend-added events should notify once, then be marked seen.
@@ -291,6 +368,7 @@ async function runLinksSync() {
     sharedLinks: userData.sharedLinks || [],
     friends: currentFriends,
     isNewUser,
+    activityNotifications: userData.activityNotifications || [],
   };
   await chrome.storage.local.set({ user: updatedUser });
 }
