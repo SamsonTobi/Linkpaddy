@@ -1,10 +1,6 @@
-export type SharedLink = {
-  id: string;
-  link: string;
-  sender: string;
-  timestamp: string;
-  recipients: string[];
-  status: string;
+import { SharedContent } from "../shared/content";
+
+export type SharedLink = SharedContent & {
   kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed" | "auto_friend_added";
   senderProfile?: {
     uid: string;

@@ -3,6 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import {
   ArrowLeft,
   LinkSimple,
+  TextT,
   ClipboardText,
   Globe,
   PaperPlaneTilt,
@@ -32,7 +33,9 @@ const ShareLink: React.FC<ShareLinkProps> = ({
   initialLink = "",
   skipToFriends = false,
 }) => {
-  const { currentUser, shareLink } = useAuth();
+  const { currentUser, shareLink, shareText } = useAuth();
+  const [contentType, setContentType] = useState<"link" | "text">("link");
+  const [text, setText] = useState("");
   const [link, setLink] = useState(initialLink);
   const [showFriendsList, setShowFriendsList] = useState(
     skipToFriends && !!initialLink,
@@ -79,8 +82,9 @@ const ShareLink: React.FC<ShareLinkProps> = ({
       }
     });
 
-    return Array.from(friendMap.values());
-  }, [currentUser?.friends]);
+    const recent = new Map((currentUser?.recentShareRecipientUsernames || []).map((username, index) => [username, index]));
+    return Array.from(friendMap.values()).sort((a, b) => (recent.get(a.username) ?? Number.MAX_SAFE_INTEGER) - (recent.get(b.username) ?? Number.MAX_SAFE_INTEGER));
+  }, [currentUser?.friends, currentUser?.recentShareRecipientUsernames]);
 
   const filteredFriends = useMemo(() => {
     if (!searchTerm.trim()) return uniqueFriends;
@@ -134,10 +138,10 @@ const ShareLink: React.FC<ShareLinkProps> = ({
 
   // Auto-open the friend list when a link is entered
   useEffect(() => {
-    if (link) {
+    if (link || (contentType === "text" && text.trim())) {
       setShowFriendsList(true);
     }
-  }, [link]);
+  }, [link, text, contentType]);
 
   const handleClipboardPaste = () => {
     if (clipboardLink) {
@@ -151,12 +155,16 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     if (isSharing) return;
 
     setError(null);
-    if (!link) {
+    if (contentType === "link" && !link) {
       setError("Please enter a link");
       return;
     }
+    if (contentType === "text" && !text.trim()) {
+      setError("Write something to share");
+      return;
+    }
 
-    const selectedRecipients = filteredFriends
+    const selectedRecipients = uniqueFriends
       .filter((friend) => selectedFriendKeys.includes(friend.key))
       .map((friend) => friend.username);
 
@@ -167,7 +175,8 @@ const ShareLink: React.FC<ShareLinkProps> = ({
 
     try {
       setIsSharing(true);
-      await shareLink(link, selectedRecipients);
+      if (contentType === "text") await shareText(text.trim(), selectedRecipients);
+      else await shareLink(link, selectedRecipients);
       onBack();
     } catch (error) {
       setError(error instanceof Error ? error.message : "Failed to share link");
@@ -198,12 +207,22 @@ const ShareLink: React.FC<ShareLinkProps> = ({
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-semibold outfit-semibold">Share link</h2>
+          <h2 className="text-xl font-semibold outfit-semibold">Share something</h2>
       </div>
 
       <div className="px-4 pt-4 pb-6 flex-1 overflow-auto">
         <form onSubmit={handleShare} className="space-y-4">
-          <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
+          <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
+            <button type="button" onClick={() => setContentType("link")} className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${contentType === "link" ? "bg-white shadow-sm font-medium" : "text-gray-500"}`}><LinkSimple className="w-4 h-4" /> Link</button>
+            <button type="button" onClick={() => setContentType("text")} className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${contentType === "text" ? "bg-white shadow-sm font-medium" : "text-gray-500"}`}><TextT className="w-4 h-4" /> Text</button>
+          </div>
+
+          {contentType === "text" ? (
+            <div>
+              <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Share a thought with your circle..." maxLength={1000} className="w-full min-h-32 resize-none border border-gray-200 rounded-xl p-4 outfit-normal focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]" disabled={isSharing} />
+              <p className="mt-1 text-right text-xs text-gray-400">{text.length}/1000</p>
+            </div>
+          ) : <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
             <LinkSimple className="w-5 h-5 mr-3 text-gray-400" />
             <input
               type="url"
@@ -214,9 +233,9 @@ const ShareLink: React.FC<ShareLinkProps> = ({
               disabled={isSharing}
               required
             />
-          </div>
+          </div>}
 
-          {!link && clipboardLink && !hasUsedClipboard && (
+          {contentType === "link" && !link && clipboardLink && !hasUsedClipboard && (
             <CustomButton
               type="button"
               onClick={handleClipboardPaste}
@@ -230,7 +249,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
             </CustomButton>
           )}
 
-          {!link && currentTabLink && (
+          {contentType === "link" && !link && currentTabLink && (
             <CustomButton
               type="button"
               onClick={() => setLink(currentTabLink)}

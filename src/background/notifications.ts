@@ -13,8 +13,8 @@ export function showLinkNotification(link: SharedLink) {
       {
         type: "basic",
         iconUrl: "icons/icon128.png",
-        title: "New link from " + link.sender,
-        message: link.link,
+        title: link.contentType === "text" ? "New message from " + link.sender : "New link from " + link.sender,
+        message: link.contentType === "text" ? link.text || "Shared a message" : link.link || "Shared a link",
         priority: 2,
       },
       () => {

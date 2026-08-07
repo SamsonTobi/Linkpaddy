@@ -1,278 +1,273 @@
 import { db } from "../firebase";
-import { doc, getDoc, updateDoc, arrayUnion } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, updateDoc } from "firebase/firestore";
 import { resolveFriendRefByUsername } from "./friends";
 import { requireMatchingAuthUser } from "./authState";
+import {
+  ContentStatus,
+  PublicProfile,
+  SharedContent,
+  normalizeUsername,
+  updateLike,
+  updateRecipientStatus,
+  validateContent,
+} from "../shared/content";
 
-function normalizeRecipientUsername(value: unknown): string {
-  if (typeof value !== "string") return "";
-  return value.trim().replace(/^@/, "").toLowerCase();
+interface StoredUser {
+  uid: string;
+  username: string;
+  displayName?: string;
+  photoURL?: string;
+  joinedAt?: string;
+  friends?: Array<PublicProfile & { status?: string }>;
+  sharedLinks?: SharedContent[];
+  receivedLinks?: SharedContent[];
+  bookmarkedLinkIds?: string[];
+  recentShareRecipientUsernames?: string[];
+  lastSharedAt?: number;
+  [key: string]: unknown;
 }
 
-export function handleUpdateLinkStatusMessage(
-  message: any,
-  sendResponse: (response: { success: boolean; error?: string }) => void,
+type Response = { success: boolean; error?: string; item?: SharedContent };
+
+async function getStoredUser(): Promise<StoredUser> {
+  const { user } = await chrome.storage.local.get(["user"]);
+  if (!user?.uid) throw new Error("No user logged in");
+  await requireMatchingAuthUser(user.uid);
+  return user as StoredUser;
+}
+
+function profileFromUser(user: StoredUser): PublicProfile {
+  return {
+    uid: user.uid,
+    username: normalizeUsername(user.username),
+    displayName: user.displayName,
+    photoURL: user.photoURL,
+    joinedAt: user.joinedAt,
+  };
+}
+
+async function resolveProfile(user: StoredUser, username: string) {
+  const normalized = normalizeUsername(username);
+  const local = (user.friends || []).find(
+    (friend) => normalizeUsername(friend.username) === normalized,
+  );
+  if (local?.uid) {
+    return { profile: { ...local, username: normalized }, ref: doc(db, "users", local.uid) };
+  }
+  const resolved = await resolveFriendRefByUsername(normalized);
+  if (!resolved) return null;
+  const snapshot = await getDoc(resolved.ref);
+  const data = snapshot.data() || {};
+  return {
+    ref: resolved.ref,
+    profile: {
+      uid: resolved.uid,
+      username: normalized,
+      displayName: data.displayName,
+      photoURL: data.photoURL,
+      joinedAt: data.joinedAt,
+    } as PublicProfile,
+  };
+}
+
+async function updateLocalUser(user: StoredUser, patch: Partial<StoredUser>) {
+  await chrome.storage.local.set({ user: { ...user, ...patch } });
+}
+
+async function updateRecipientCopies(
+  owner: StoredUser,
+  recipients: string[],
+  transform: (item: SharedContent) => SharedContent | null,
 ) {
-  const { linkId, status, senderUsername } = message;
-
-  // Get current user data first
-  chrome.storage.local.get(["user"], async (result) => {
-    const currentUser = result.user;
-    if (!currentUser) {
-      sendResponse({ success: false, error: "No user logged in" });
-      return;
-    }
-
-    try {
-      await requireMatchingAuthUser(currentUser.uid);
-
-      // Update receiver's document
-      const userRef = doc(db, "users", currentUser.uid);
-      const userDoc = await getDoc(userRef);
-      const userData = userDoc.data();
-
-      if (userData && userData.receivedLinks) {
-        const updatedReceivedLinks = userData.receivedLinks.map(
-          (link: { id: any }) =>
-            link.id === linkId ? { ...link, status } : link,
-        );
-        await updateDoc(userRef, { receivedLinks: updatedReceivedLinks });
-
-        // Sync local storage so badge updates even if popup is closed
-        const updatedUser = {
-          ...currentUser,
-          receivedLinks: updatedReceivedLinks,
-        };
-        chrome.storage.local.set({ user: updatedUser });
-      }
-
-      // Update sender's sharedLinks using friend UID from local friends list
-      const friends: any[] = currentUser.friends || [];
-      const sender = friends.find((f: any) => f.username === senderUsername);
-
-      if (sender && sender.uid) {
-        console.log(
-          `Updating sender ${senderUsername} (uid: ${sender.uid}) sharedLinks status`,
-        );
-        try {
-          const senderRef = doc(db, "users", sender.uid);
-          const senderSnap = await getDoc(senderRef);
-
-          if (!senderSnap.exists()) {
-            console.error(`Sender doc does not exist for uid: ${sender.uid}`);
-          } else {
-            const senderData = senderSnap.data();
-            console.log(
-              `Sender doc read success. sharedLinks count: ${(senderData.sharedLinks || []).length}`,
-            );
-
-            if (senderData && senderData.sharedLinks) {
-              const updatedSharedLinks = senderData.sharedLinks.map(
-                (link: { id: any }) =>
-                  link.id === linkId ? { ...link, status } : link,
-              );
-              await updateDoc(senderRef, { sharedLinks: updatedSharedLinks });
-              console.log(
-                `Sender sharedLinks status updated to ${status} for linkId ${linkId}`,
-              );
-            } else {
-              console.error("Sender has no sharedLinks array");
-            }
-          }
-        } catch (senderError) {
-          console.error("Error updating sender's sharedLinks:", senderError);
-        }
-      } else {
-        try {
-          const resolvedSender =
-            await resolveFriendRefByUsername(senderUsername);
-          if (resolvedSender) {
-            console.log(
-              `Updating sender ${senderUsername} (resolved uid: ${resolvedSender.uid}) sharedLinks status`,
-            );
-
-            const senderSnap = await getDoc(resolvedSender.ref);
-            if (senderSnap.exists()) {
-              const senderData = senderSnap.data();
-              if (senderData && senderData.sharedLinks) {
-                const updatedSharedLinks = senderData.sharedLinks.map(
-                  (link: { id: any }) =>
-                    link.id === linkId ? { ...link, status } : link,
-                );
-                await updateDoc(resolvedSender.ref, {
-                  sharedLinks: updatedSharedLinks,
-                });
-              }
-            }
-          } else {
-            console.error(
-              `Sender ${senderUsername} not found in local friends list or by username lookup. Friends:`,
-              JSON.stringify(friends.map((f: any) => f.username)),
-            );
-          }
-        } catch (senderResolveError) {
-          console.error(
-            "Error resolving sender by username:",
-            senderResolveError,
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Error updating link status:", error);
-      sendResponse({
-        success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update link status",
-      });
-      return;
-    }
-
-    sendResponse({ success: true });
-  });
+  for (const username of recipients) {
+    const resolved = await resolveProfile(owner, username);
+    if (!resolved) continue;
+    const snapshot = await getDoc(resolved.ref);
+    if (!snapshot.exists()) continue;
+    const links = (snapshot.data().receivedLinks || []) as SharedContent[];
+    const next = links.flatMap((item) => {
+      const result = transform(item);
+      return result ? [result] : [];
+    });
+    await updateDoc(resolved.ref, { receivedLinks: next });
+  }
 }
 
 export async function shareLink(link: string, selectedFriends: string[]) {
-  const normalizedSelectedFriends = Array.from(
-    new Set(
-      selectedFriends
-        .map((friendUsername) => normalizeRecipientUsername(friendUsername))
-        .filter(Boolean),
-    ),
+  return shareContent({ link, contentType: "link" }, selectedFriends);
+}
+
+export async function shareContent(
+  input: { link?: string; text?: string; contentType: "link" | "text" },
+  selectedFriends: string[],
+) {
+  const content = validateContent(input);
+  const recipients = Array.from(new Set(selectedFriends.map(normalizeUsername).filter(Boolean)));
+  if (recipients.length === 0) throw new Error("Please select at least one friend");
+
+  const user = await getStoredUser();
+  const resolvedRecipients = [];
+  for (const username of recipients) {
+    const resolved = await resolveProfile(user, username);
+    if (!resolved) throw new Error(`Could not find @${username}`);
+    resolvedRecipients.push(resolved);
+  }
+
+  const timestamp = new Date().toISOString();
+  const id = `${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
+  const recipientProfiles = resolvedRecipients.map(({ profile }) => profile);
+  const item: SharedContent = {
+    id,
+    ...content,
+    sender: normalizeUsername(user.username),
+    senderUid: user.uid,
+    timestamp,
+    recipients,
+    recipientProfiles,
+    recipientStatuses: recipientProfiles.map((profile) => ({ ...profile, status: "unseen" })),
+    status: "unseen",
+    likedBy: [],
+  };
+
+  const userRef = doc(db, "users", user.uid);
+  const recentShareRecipientUsernames = [
+    ...recipients,
+    ...(user.recentShareRecipientUsernames || []).filter((username) => !recipients.includes(username)),
+  ];
+  await updateDoc(userRef, { sharedLinks: arrayUnion(item), lastSharedAt: Date.now(), recentShareRecipientUsernames });
+  for (const { ref } of resolvedRecipients) {
+    await updateDoc(ref, { receivedLinks: arrayUnion(item) });
+  }
+
+  await updateLocalUser(user, {
+    sharedLinks: [...(user.sharedLinks || []), item],
+    lastSharedAt: Date.now(),
+    recentShareRecipientUsernames,
+  });
+  await chrome.storage.local.set({ lastAnimatedShareId: id });
+  chrome.runtime.sendMessage({ type: "SHARE_LINK_SUCCESS", item });
+  return item;
+}
+
+export async function updateLinkStatus(
+  linkId: string,
+  status: ContentStatus,
+  senderUsername?: string,
+) {
+  const user = await getStoredUser();
+  const now = new Date().toISOString();
+  const profile = profileFromUser(user);
+  const userRef = doc(db, "users", user.uid);
+  const userSnap = await getDoc(userRef);
+  const receivedLinks = ((userSnap.data()?.receivedLinks || []) as SharedContent[]).map((item) =>
+    item.id === linkId ? { ...item, status } : item,
+  );
+  await updateDoc(userRef, { receivedLinks });
+  await updateLocalUser(user, { receivedLinks });
+
+  const sender = await resolveProfile(user, senderUsername || "");
+  if (!sender) return;
+  const senderSnap = await getDoc(sender.ref);
+  const sharedLinks = ((senderSnap.data()?.sharedLinks || []) as SharedContent[]).map((item) =>
+    item.id === linkId
+      ? { ...item, recipientStatuses: updateRecipientStatus(item.recipientStatuses, profile, status, now) }
+      : item,
+  );
+  await updateDoc(sender.ref, { sharedLinks });
+}
+
+export function handleUpdateLinkStatusMessage(message: any, sendResponse: (response: Response) => void) {
+  updateLinkStatus(message.linkId, message.status, message.senderUsername)
+    .then(() => sendResponse({ success: true }))
+    .catch((error) => sendResponse({ success: false, error: error instanceof Error ? error.message : "Status update failed" }));
+}
+
+async function toggleBookmark(linkId: string, bookmarked: boolean) {
+  const user = await getStoredUser();
+  const ids = new Set(user.bookmarkedLinkIds || []);
+  if (bookmarked) ids.add(linkId);
+  else ids.delete(linkId);
+  const bookmarkedLinkIds = Array.from(ids);
+  await updateDoc(doc(db, "users", user.uid), { bookmarkedLinkIds });
+  await updateLocalUser(user, { bookmarkedLinkIds });
+}
+
+async function toggleLike(linkId: string, liked: boolean) {
+  const user = await getStoredUser();
+  const ownItem = (user.sharedLinks || []).find((item) => item.id === linkId);
+  const receivedItem = (user.receivedLinks || []).find((item) => item.id === linkId);
+  const senderUsername = ownItem?.sender || receivedItem?.sender;
+  if (!senderUsername) throw new Error("Item not found");
+  if ((ownItem || receivedItem)?.contentType === "text") throw new Error("Only links can be liked");
+
+  const sender = ownItem
+    ? { ref: doc(db, "users", user.uid), profile: profileFromUser(user) }
+    : await resolveProfile(user, senderUsername);
+  if (!sender) throw new Error("Sender not found");
+  const senderSnap = await getDoc(sender.ref);
+  const senderData = senderSnap.data() as StoredUser;
+  let updatedItem: SharedContent | undefined;
+  const sharedLinks = (senderData.sharedLinks || []).map((item) => {
+    if (item.id !== linkId) return item;
+    updatedItem = { ...item, likedBy: updateLike(item.likedBy, user.username, liked) };
+    return updatedItem;
+  });
+  if (!updatedItem) throw new Error("Item not found");
+
+  const patch: any = { sharedLinks };
+  if (liked && senderData.uid !== user.uid) {
+    patch.activityNotifications = arrayUnion({
+      id: `like:${linkId}:${user.uid}`,
+      type: "link_liked",
+      shareId: linkId,
+      actorUid: user.uid,
+      actorUsername: user.username,
+      actorFirstName: user.displayName?.split(/\s+/)[0] || user.username,
+      createdAt: new Date().toISOString(),
+      read: false,
+    });
+  }
+  await updateDoc(sender.ref, patch);
+  await updateRecipientCopies(senderData, updatedItem.recipients || [], (item) =>
+    item.id === linkId ? { ...item, likedBy: updatedItem!.likedBy } : item,
   );
 
-  console.log("=== SHARE_LINK CALLED ===");
-  console.log("Link:", link);
-  console.log("Selected friends:", normalizedSelectedFriends);
+  const sharedLocal = (user.sharedLinks || []).map((item) => item.id === linkId ? { ...item, likedBy: updatedItem!.likedBy } : item);
+  const receivedLocal = (user.receivedLinks || []).map((item) => item.id === linkId ? { ...item, likedBy: updatedItem!.likedBy } : item);
+  await updateLocalUser(user, { sharedLinks: sharedLocal, receivedLinks: receivedLocal });
+}
 
-  try {
-    const userDataRaw = await new Promise<{ [key: string]: any }>((resolve) => {
-      chrome.storage.local.get(["user"], (result) => resolve(result.user));
-    });
+export function handleToggleContentMessage(message: any, sendResponse: (response: Response) => void) {
+  const operation = message.type === "TOGGLE_BOOKMARK"
+    ? toggleBookmark(message.linkId, !!message.value)
+    : toggleLike(message.linkId, !!message.value);
+  operation
+    .then(() => sendResponse({ success: true }))
+    .catch((error) => sendResponse({ success: false, error: error instanceof Error ? error.message : "Update failed" }));
+}
 
-    console.log("Current user:", userDataRaw?.username, userDataRaw?.uid);
+export async function editText(linkId: string, text: string) {
+  const validated = validateContent({ contentType: "text", text });
+  const user = await getStoredUser();
+  const editedAt = new Date().toISOString();
+  let edited: SharedContent | undefined;
+  const sharedLinks = (user.sharedLinks || []).map((item) => {
+    if (item.id !== linkId || item.contentType !== "text") return item;
+    edited = { ...item, text: validated.text, editedAt };
+    return edited;
+  });
+  if (!edited) throw new Error("Only the sender can edit this text");
+  await updateDoc(doc(db, "users", user.uid), { sharedLinks });
+  await updateRecipientCopies(user, edited.recipients || [], (item) => item.id === linkId ? edited! : item);
+  await updateLocalUser(user, { sharedLinks });
+}
 
-    if (!userDataRaw) throw new Error("No user logged in");
-    await requireMatchingAuthUser(userDataRaw.uid);
-
-    if (normalizedSelectedFriends.length === 0) {
-      throw new Error("Please select at least one friend");
-    }
-
-    const linkId = Date.now().toString();
-    const timestamp = new Date().toISOString();
-
-    const sharedLinkData = {
-      id: linkId,
-      link,
-      sender: userDataRaw.username,
-      timestamp,
-      recipients: normalizedSelectedFriends,
-      status: "unseen",
-    };
-
-    // Look up friend UIDs from the local friends list (avoids Firestore read permission issue)
-    const friends: any[] = userDataRaw.friends || [];
-    const friendRefsByUid = new Map<string, { ref: any; username: string }>();
-
-    for (const friendUsername of normalizedSelectedFriends) {
-      const friend = friends.find(
-        (f: any) => normalizeRecipientUsername(f?.username) === friendUsername,
-      );
-      if (friend && friend.uid) {
-        console.log(
-          `Found friend locally: ${friendUsername} -> uid: ${friend.uid}`,
-        );
-        if (!friendRefsByUid.has(friend.uid)) {
-          friendRefsByUid.set(friend.uid, {
-            ref: doc(db, "users", friend.uid),
-            username: friendUsername,
-          });
-        }
-      } else {
-        const resolvedFriend = await resolveFriendRefByUsername(friendUsername);
-        if (resolvedFriend?.uid) {
-          console.log(
-            `Resolved friend by username: ${friendUsername} -> uid: ${resolvedFriend.uid}`,
-          );
-          if (!friendRefsByUid.has(resolvedFriend.uid)) {
-            friendRefsByUid.set(resolvedFriend.uid, {
-              ref: resolvedFriend.ref,
-              username: friendUsername,
-            });
-          }
-        } else {
-          console.error(
-            `Friend ${friendUsername} not found in local list or by username lookup`,
-          );
-        }
-      }
-    }
-
-    const friendRefs = Array.from(friendRefsByUid.values());
-
-    console.log(
-      `Total friends resolved: ${friendRefs.length} of ${normalizedSelectedFriends.length}`,
-    );
-
-    if (friendRefs.length === 0) {
-      throw new Error(
-        "Could not resolve any selected friend. Remove and re-add your friend, then try again.",
-      );
-    }
-
-    if (friendRefs.length !== normalizedSelectedFriends.length) {
-      throw new Error(
-        "Some selected friends could not be resolved. Remove and re-add those friends, then try again.",
-      );
-    }
-
-    // Update sender's sharedLinks
-    const userRef = doc(db, "users", userDataRaw.uid);
-    await updateDoc(userRef, {
-      sharedLinks: arrayUnion(sharedLinkData),
-    });
-    console.log("Sender sharedLinks updated");
-
-    // Update each recipient's receivedLinks individually
-    for (const { ref, username } of friendRefs) {
-      const receivedLinkData = {
-        id: linkId,
-        link,
-        sender: userDataRaw.username,
-        timestamp,
-        status: "unseen",
-      };
-
-      console.log(
-        `Updating receivedLinks for ${username}:`,
-        JSON.stringify(receivedLinkData),
-      );
-      await updateDoc(ref, {
-        receivedLinks: arrayUnion(receivedLinkData),
-      });
-      console.log(`receivedLinks updated for ${username}`);
-    }
-
-    console.log("All writes completed successfully!");
-
-    // Update local storage with the new shared link
-    const updatedUser = {
-      ...userDataRaw,
-      sharedLinks: [...(userDataRaw.sharedLinks || []), sharedLinkData],
-    };
-    chrome.storage.local.set({ user: updatedUser });
-
-    chrome.runtime.sendMessage({
-      type: "SHARE_LINK_SUCCESS",
-    });
-  } catch (error) {
-    console.error("Error sharing link:", error);
-    chrome.runtime.sendMessage({
-      type: "SHARE_LINK_ERROR",
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-    });
-
-    throw error;
-  }
+export async function deleteContent(linkId: string) {
+  const user = await getStoredUser();
+  const item = (user.sharedLinks || []).find((candidate) => candidate.id === linkId);
+  if (!item) throw new Error("Only the sender can delete this item");
+  const sharedLinks = (user.sharedLinks || []).filter((candidate) => candidate.id !== linkId);
+  await updateDoc(doc(db, "users", user.uid), { sharedLinks });
+  await updateRecipientCopies(user, item.recipients || [], (candidate) => candidate.id === linkId ? null : candidate);
+  await updateLocalUser(user, { sharedLinks });
 }
