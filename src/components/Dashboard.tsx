@@ -15,6 +15,14 @@ import {
   X,
   ClipboardText,
   PaperPlaneTilt,
+  Heart,
+  BookmarkSimple,
+  TextT,
+  Copy,
+  DotsThreeVertical,
+  PencilSimple,
+  Trash,
+  Check,
 } from "@phosphor-icons/react";
 import ShareLink from "./ShareLink";
 import SettingsComponent from "./Settings";
@@ -107,9 +115,9 @@ const openedLinkIcon = (
 );
 
 const Dashboard: React.FC = () => {
-  const { currentUser, updateLinkStatus, removeFriend, acceptFriend, rejectFriend } = useAuth();
+  const { currentUser, updateLinkStatus, removeFriend, acceptFriend, rejectFriend, toggleLike, toggleBookmark, editText, deleteContent, addFriend, searchUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"links" | "friends">("links");
-  const [linkFilter, setLinkFilter] = useState<"all" | "sent" | "received">(
+  const [linkFilter, setLinkFilter] = useState<"all" | "sent" | "received" | "saved">(
     "all",
   );
   const [showShareLink, setShowShareLink] = useState(false);
@@ -122,6 +130,17 @@ const Dashboard: React.FC = () => {
   );
   const [isRefreshingFriends, setIsRefreshingFriends] = useState(false);
   const [showShortcutTip, setShowShortcutTip] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  const [selectedProfile, setSelectedProfile] = useState<any | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [animatedShareId, setAnimatedShareId] = useState<string | null>(null);
+  const [confirmationShareId, setConfirmationShareId] = useState<string | null>(null);
+  const [openMoreId, setOpenMoreId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showNavigation, setShowNavigation] = useState(true);
+  const lastScrollTop = React.useRef(0);
 
   // Invite state (for the "Bring your friends aboard" card)
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -149,6 +168,25 @@ const Dashboard: React.FC = () => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    chrome.storage.local.get(["lastAnimatedShareId"], ({ lastAnimatedShareId }) => {
+      if (!lastAnimatedShareId) return;
+      setAnimatedShareId(lastAnimatedShareId);
+      setConfirmationShareId(lastAnimatedShareId);
+      chrome.storage.local.remove("lastAnimatedShareId");
+      setTimeout(() => setConfirmationShareId(null), 1500);
+      setTimeout(() => setAnimatedShareId(null), 2600);
+    });
+  }, [showShareLink]);
+
+  const handleFeedScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const scrollTop = event.currentTarget.scrollTop;
+    const delta = scrollTop - lastScrollTop.current;
+    if (scrollTop <= 8) setShowNavigation(true);
+    else if (Math.abs(delta) > 5) setShowNavigation(delta < 0);
+    lastScrollTop.current = scrollTop;
+  };
 
   const dismissShortcutTip = () => {
     setShowShortcutTip(false);
@@ -259,8 +297,9 @@ const Dashboard: React.FC = () => {
     if (linkFilter === "all") return sortedLinks;
     if (linkFilter === "sent")
       return sortedLinks.filter((link) => link.type === "shared");
+    if (linkFilter === "saved") return sortedLinks.filter((link) => currentUser?.bookmarkedLinkIds?.includes(link.id));
     return sortedLinks.filter((link) => link.type === "received");
-  }, [sortedLinks, linkFilter]);
+  }, [sortedLinks, linkFilter, currentUser?.bookmarkedLinkIds]);
 
   // Separate unseen received links
   const unseenReceivedLinks = useMemo(() => {
@@ -478,13 +517,13 @@ const Dashboard: React.FC = () => {
 
       // Only load previews for links we haven't fetched yet
       const linksToFetch = sortedLinks
-        .filter((link) => !linkPreviews[link.link])
+        .filter((link) => link.link && !linkPreviews[link.link])
         .slice(0, 10); // Limit to 10 at a time
 
       await Promise.all(
         linksToFetch.map(async (link) => {
-          const preview = await fetchPreview(link.link);
-          previews[link.link] = preview;
+          const preview = await fetchPreview(link.link!);
+          previews[link.link!] = preview;
         }),
       );
 
@@ -567,7 +606,18 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const copyValue = async (link: any) => {
+    await navigator.clipboard.writeText(link.contentType === "text" ? link.text || "" : link.link || "");
+    setCopiedId(link.id);
+    setToast(link.contentType === "text" ? "Text copied" : "Link copied");
+    setTimeout(() => { setCopiedId(null); setToast(null); }, 1800);
+  };
+
   const handleLinkClick = async (link: any) => {
+    if (link.contentType === "text") {
+      await copyValue(link);
+      return;
+    }
     if (link.type === "received" && link.status !== "opened") {
       try {
         await updateLinkStatus(link.id, "opened");
@@ -588,6 +638,113 @@ const Dashboard: React.FC = () => {
       window.open(link.link, "_blank");
     }
   };
+
+  const toggleItemLike = async (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    await toggleLike(link.id, !(link.likedBy || []).includes(currentUser.username));
+  };
+
+  const toggleItemBookmark = async (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    await toggleBookmark(link.id, !currentUser.bookmarkedLinkIds?.includes(link.id));
+  };
+
+  const copyItem = async (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    await copyValue(link);
+  };
+
+  const startEditing = (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    setEditingItem(link);
+    setEditDraft(link.text || "");
+  };
+
+  const saveEdit = async () => {
+    if (!editingItem) return;
+    await editText(editingItem.id, editDraft);
+    setEditingItem(null);
+  };
+
+  const removeItem = async (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    if (window.confirm("Delete this item for everyone?")) await deleteContent(link.id);
+  };
+
+  const isBookmarked = (linkId: string) => currentUser.bookmarkedLinkIds?.includes(linkId) || false;
+  const selectedProfileRelationship = selectedProfile
+    ? currentUser.friends?.find((friend) => friend.uid === selectedProfile.uid || friend.username === selectedProfile.username)
+    : undefined;
+
+  const getRecipients = (link: any) => {
+    const statuses = Array.isArray(link.recipientStatuses) ? link.recipientStatuses : [];
+    const profiles = Array.isArray(link.recipientProfiles) ? link.recipientProfiles : [];
+    const legacyRecipients = Array.isArray(link.recipients) ? link.recipients : [];
+    const byUsername = new Map<string, any>();
+
+    [...profiles, ...statuses].forEach((person) => {
+      if (!person?.username) return;
+      byUsername.set(person.username, { ...byUsername.get(person.username), ...person });
+    });
+    legacyRecipients.forEach((username: string) => {
+      if (!byUsername.has(username)) {
+        byUsername.set(username, {
+          username,
+          displayName: resolveSenderLabel(username),
+          status: link.status || "unseen",
+        });
+      }
+    });
+    return Array.from(byUsername.values());
+  };
+
+  const getOtherRecipients = (link: any) =>
+    getRecipients(link).filter(
+      (person) => person.username?.toLowerCase() !== currentUser.username?.toLowerCase(),
+    );
+
+  const openRecipientProfile = async (person: any) => {
+    const username = String(person.username || "").toLowerCase();
+    const localFriend = currentUser.friends?.find(
+      (friend) => friend.uid === person.uid || friend.username?.toLowerCase() === username,
+    );
+    const initialProfile = { ...person, ...localFriend, username };
+    setSelectedProfile(initialProfile);
+    if (initialProfile.photoURL && initialProfile.joinedAt) return;
+
+    setIsLoadingProfile(true);
+    try {
+      const exactProfile = (await searchUser(username)).find(
+        (user) => user.username?.toLowerCase() === username,
+      );
+      if (exactProfile) {
+        setSelectedProfile((current: any) => current?.username === username ? {
+          ...current,
+          uid: exactProfile.uid,
+          displayName: exactProfile.displayName || current.displayName,
+          photoURL: exactProfile.photoURL || current.photoURL,
+          joinedAt: (exactProfile as any).joinedAt || current.joinedAt,
+        } : current);
+      }
+    } catch (error) {
+      console.warn("Could not load recipient profile:", username, error);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
+  const itemActions = (link: any, onPreview = false) => (
+    <div className={`relative flex items-center gap-0.5 rounded-full p-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity ${onPreview ? "bg-black/60 text-white backdrop-blur-sm" : "bg-gray-100 text-gray-600"}`}>
+      {link.contentType !== "text" && <button title="Like" onClick={(event) => toggleItemLike(event, link)} className={`rounded-full p-1.5 hover:bg-white/20 ${(link.likedBy || []).includes(currentUser.username || "") ? "text-rose-400" : "text-current"}`}><Heart weight={(link.likedBy || []).includes(currentUser.username || "") ? "fill" : "regular"} className="h-[19px] w-[19px]" /></button>}
+      <button title="More options" onClick={(event) => { event.stopPropagation(); setOpenMoreId(openMoreId === link.id ? null : link.id); }} className="rounded-full p-1.5 text-current hover:bg-white/20"><DotsThreeVertical className="h-[19px] w-[19px]" /></button>
+      {openMoreId === link.id && <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-lg border border-gray-100 bg-white p-1 text-left shadow-lg">
+        <button onClick={(event) => copyItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><Copy className="h-3.5 w-3.5" /> {link.contentType === "text" ? "Copy text" : "Copy link"}</button>
+        {link.contentType !== "text" && <button onClick={(event) => toggleItemBookmark(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><BookmarkSimple className="h-3.5 w-3.5" /> {isBookmarked(link.id) ? "Unsave" : "Bookmark"}</button>}
+        {link.type === "shared" && link.contentType === "text" && <button onClick={(event) => startEditing(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><PencilSimple className="h-3.5 w-3.5" /> Edit text</button>}
+        {link.type === "shared" && <button onClick={(event) => removeItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs text-red-600 hover:bg-red-50"><Trash className="h-3.5 w-3.5" /> Delete</button>}
+      </div>}
+    </div>
+  );
 
   const resolveSenderLabel = (sender: string) => {
     const key = (sender || "").replace(/^@/, "").toLowerCase();
@@ -636,12 +793,12 @@ const Dashboard: React.FC = () => {
           <CustomButton
             onClick={() => setShowShareLink(true)}
             variant="primary"
-            size="sm"
-            className="font-medium"
+            size="md"
+            className="rounded-full px-5 py-2.5 font-medium"
             showArrow={false}
             trailingIcon={<ShareNetwork className="w-4 h-4" />}
           >
-            Share a link
+            Share anything
           </CustomButton>
           <button
             onClick={() => setShowSettings(true)}
@@ -652,6 +809,7 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      <div className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${showNavigation ? "max-h-24 translate-y-0 opacity-100" : "max-h-0 -translate-y-full opacity-0"}`}>
       <div className="flex gap-2 p-4 justify-between items-center">
         <div className="flex gap-2">
           <button
@@ -663,7 +821,7 @@ const Dashboard: React.FC = () => {
             }`}
           >
             <LinkSimple className="w-4 h-4" />
-            Links Dashboard
+            My Links
           </button>
           <button
             onClick={() => setActiveTab("friends")}
@@ -674,7 +832,7 @@ const Dashboard: React.FC = () => {
             }`}
           >
             <Users className="w-4 h-4" />
-            <span>Your Sharing Circle</span>
+            <span>My Network</span>
             {pendingReceivedRequests.length > 0 && (
               <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white leading-none">
                 {pendingReceivedRequests.length}
@@ -690,7 +848,7 @@ const Dashboard: React.FC = () => {
             <select
               value={linkFilter}
               onChange={(e) =>
-                setLinkFilter(e.target.value as "all" | "sent" | "received")
+                setLinkFilter(e.target.value as "all" | "sent" | "received" | "saved")
               }
               className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
               title="Filter links"
@@ -698,12 +856,14 @@ const Dashboard: React.FC = () => {
               <option value="all">All Links</option>
               <option value="sent">Sent Links</option>
               <option value="received">Received Links</option>
+              <option value="saved">Saved</option>
             </select>
           </div>
         )}
       </div>
+      </div>
 
-      <div className="flex-1 px-4 pb-6 pt-0 overflow-auto">
+      <div className="flex-1 px-4 pb-6 pt-0 overflow-auto" onScroll={handleFeedScroll}>
         {activeTab === "links" && (
           <div className="space-y-3 h-full">
             {currentUser.sharedLinks &&
@@ -720,38 +880,45 @@ const Dashboard: React.FC = () => {
                       </h3>
                     </div>
                     {unseenReceivedLinks.map((link, index) => {
-                      const preview = linkPreviews[link.link];
+                      const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
                         <div
                           key={`unseen-${link.type}-${index}`}
-                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors relative"
+                           className={`group bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors relative ${animatedShareId === link.id ? "animate-share-in" : ""}`}
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Blue dot indicator */}
                           <div className="absolute top-3 left-3 w-2 h-2 rounded-full bg-[#6C5CE7] z-10"></div>
 
                           {/* Link Preview Image */}
-                          {showLinkPreviews && preview?.image && (
-                            <div className="w-full h-32 bg-gray-200">
-                              <img
+                           {showLinkPreviews && preview?.image && (
+                             <div className="relative w-full h-32 rounded-t-xl bg-gray-200">
+                               <img
                                 src={preview.image}
                                 alt={preview.title || "Link preview"}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full rounded-t-xl object-cover"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display =
                                     "none";
                                 }}
-                              />
-                            </div>
-                          )}
+                               />
+                               <div className="absolute right-3 top-3 z-20">
+                                 {itemActions(link, true)}
+                               </div>
+                             </div>
+                           )}
 
                           <div className="flex items-center gap-4 p-4">
                             {/* Favicon or Icon */}
-                            {showLinkPreviews && preview?.favicon ? (
+                            {confirmationShareId === link.id ? (
+                              <span className="sent-check-icon flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white"><Check className="h-4 w-4" weight="bold" /></span>
+                            ) : link.contentType === "text" ? (
+                              <TextT className="w-5 h-5 text-[#6C5CE7]" />
+                            ) : showLinkPreviews && preview?.favicon ? (
                               <img
                                 src={preview.favicon}
                                 alt=""
-                                className="w-5 h-5 rounded"
+                                className={`w-5 h-5 rounded ${animatedShareId === link.id ? "favicon-reveal" : ""}`}
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display =
                                     "none";
@@ -762,11 +929,13 @@ const Dashboard: React.FC = () => {
                             )}
 
                             <div className="flex-1 min-w-0">
-                              <p className="block font-bold outfit-bold text-sm mb-1 truncate">
-                                {showLinkPreviews && preview?.title
+                              {editingItem?.id === link.id ? <textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} onClick={(event) => event.stopPropagation()} className="w-full min-h-20 rounded-lg border border-gray-200 p-2 text-sm" /> : <p className={`block text-sm mb-1 ${link.contentType === "text" ? "text-card-preview font-medium" : "font-bold truncate"}`}>
+                                {link.contentType === "text"
+                                  ? link.text
+                                  : showLinkPreviews && preview?.title
                                   ? preview.title
                                   : link.link}
-                              </p>
+                              </p>}
 
                               {showLinkPreviews && preview?.description && (
                                 <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
@@ -780,7 +949,27 @@ const Dashboard: React.FC = () => {
                                     {preview.siteName} •{" "}
                                   </span>
                                 )}
-                                Shared by {resolveSenderLabel(link.sender)}
+                                {getOtherRecipients(link).length > 0 ? (
+                                  <span className="group/recipients relative inline-block" tabIndex={0}>
+                                    <span>Shared by {resolveSenderLabel(link.sender)} with {getOtherRecipients(link).map((person: any) => person.displayName?.split(" ")[0] || person.username).join(", ")}</span>
+                                    <span className="absolute left-0 bottom-[calc(100%-2px)] hidden group-hover/recipients:block group-focus/recipients:block z-20 w-60 rounded-xl bg-gray-900 p-3 text-left text-xs text-white shadow-xl">
+                                      <span className="block font-semibold mb-1.5">Shared with</span>
+                                      {getOtherRecipients(link).map((person: any) => (
+                                        <button
+                                          type="button"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            openRecipientProfile(person);
+                                          }}
+                                          key={person.username}
+                                          className="block w-full rounded-md px-1 py-1 text-left hover:bg-white/10"
+                                        >
+                                          {person.displayName?.split(" ")[0] || person.username}
+                                        </button>
+                                      ))}
+                                    </span>
+                                  </span>
+                                ) : `Shared by ${resolveSenderLabel(link.sender)}`}
                               </p>
                             </div>
 
@@ -788,6 +977,9 @@ const Dashboard: React.FC = () => {
                               <span className="text-xs bg-[#6C5CE7] text-white px-2 py-0.5 rounded-full">
                                 New
                               </span>
+                              <div className="relative flex h-9 min-w-[74px] items-center justify-end">
+                                {!(showLinkPreviews && preview?.image) && itemActions(link)}
+                              </div>
                               <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
                                 {getTimeAgo(link.timestamp)}
                               </span>
@@ -808,35 +1000,42 @@ const Dashboard: React.FC = () => {
                       </h3>
                     </div>
                     {group.links.map((link, index) => {
-                      const preview = linkPreviews[link.link];
+                      const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
                         <div
                           key={`${link.type}-${group.label}-${index}`}
-                          className="bg-gray-50 rounded-lg overflow-hidden cursor-pointer hover:bg-gray-100 transition-colors mb-2"
+                          className={`group relative bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors mb-2 ${animatedShareId === link.id ? "animate-share-in" : ""}`}
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Link Preview Image */}
                           {showLinkPreviews && preview?.image && (
-                            <div className="w-full h-32 bg-gray-200">
+                            <div className="relative w-full h-32 rounded-t-xl bg-gray-200">
                               <img
                                 src={preview.image}
                                 alt={preview.title || "Link preview"}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full rounded-t-xl object-cover"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display =
                                     "none";
                                 }}
                               />
+                              <div className="absolute right-3 top-3 z-20">
+                                {itemActions(link, true)}
+                              </div>
                             </div>
                           )}
 
                           <div className="flex items-center gap-4 p-4">
                             {/* Favicon or Icon */}
-                            {showLinkPreviews && preview?.favicon ? (
+                            {confirmationShareId === link.id ? (
+                              <span className="sent-check-icon flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white"><Check className="h-4 w-4" weight="bold" /></span>
+                            ) : link.contentType === "text" ? (
+                              <TextT className="w-5 h-5 text-[#6C5CE7]" />
+                            ) : showLinkPreviews && preview?.favicon ? (
                               <img
                                 src={preview.favicon}
                                 alt=""
-                                className="w-5 h-5 rounded"
+                                className={`w-5 h-5 rounded ${animatedShareId === link.id ? "favicon-reveal" : ""}`}
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display =
                                     "none";
@@ -847,11 +1046,13 @@ const Dashboard: React.FC = () => {
                             )}
 
                             <div className="flex-1 min-w-0">
-                              <p className="block font-bold outfit-bold text-sm mb-1 truncate">
-                                {showLinkPreviews && preview?.title
+                              {editingItem?.id === link.id ? <div onClick={(event) => event.stopPropagation()}><textarea value={editDraft} onChange={(event) => setEditDraft(event.target.value)} maxLength={1000} className="w-full min-h-20 rounded-lg border border-gray-200 p-2 text-sm" /><div className="flex gap-2 mt-2"><button onClick={saveEdit} className="text-xs rounded-full bg-gray-900 px-3 py-1.5 text-white">Save</button><button onClick={(event) => { event.stopPropagation(); setEditingItem(null); }} className="text-xs rounded-full bg-gray-200 px-3 py-1.5">Cancel</button></div></div> : <p className={`block text-sm mb-1 ${link.contentType === "text" ? "text-card-preview font-medium" : "font-bold truncate"}`}>
+                                {link.contentType === "text"
+                                  ? link.text
+                                  : showLinkPreviews && preview?.title
                                   ? preview.title
                                   : link.link}
-                              </p>
+                              </p>}
 
                               {showLinkPreviews && preview?.description && (
                                 <p className="text-xs text-gray-600 outfit-normal mb-1 line-clamp-2">
@@ -865,13 +1066,29 @@ const Dashboard: React.FC = () => {
                                     {preview.siteName} •{" "}
                                   </span>
                                 )}
-                                {link.type === "shared"
-                                  ? `You sent to ${link.recipients.join(", ")}`
-                                  : `Shared by ${resolveSenderLabel(link.sender)}`}
+                                {link.type === "shared" ? (
+                                  <span className="group/recipients relative inline-block" tabIndex={0}>
+                                    <span className="underline decoration-dotted underline-offset-2">Sent to {getRecipients(link).map((person: any) => person.displayName?.split(" ")[0] || person.username).join(", ")}</span>
+                                    <span className="absolute left-0 bottom-[calc(100%-2px)] hidden group-hover/recipients:block group-focus/recipients:block z-20 w-60 rounded-xl bg-gray-900 p-3 text-left text-xs text-white shadow-xl">
+                                      <span className="block font-semibold mb-1.5">Recipients</span>
+                                      {getRecipients(link).map((person: any) => <button type="button" onClick={(event) => { event.stopPropagation(); openRecipientProfile(person); }} key={person.username} className="flex w-full justify-between rounded-md px-1 py-1 text-left hover:bg-white/10"><span>{person.displayName?.split(" ")[0] || person.username}</span><span className="text-gray-400 capitalize">{person.status === "unseen" ? "Not seen" : person.status || "Recipient"}</span></button>)}
+                                    </span>
+                                  </span>
+                                ) : getOtherRecipients(link).length > 0 ? (
+                                  <span className="group/recipients relative inline-block" tabIndex={0}>
+                                    <span>Shared by {resolveSenderLabel(link.sender)} with {getOtherRecipients(link).map((person: any) => person.displayName?.split(" ")[0] || person.username).join(", ")}</span>
+                                    <span className="absolute left-0 bottom-[calc(100%-2px)] hidden group-hover/recipients:block group-focus/recipients:block z-20 w-60 rounded-xl bg-gray-900 p-3 text-left text-xs text-white shadow-xl">
+                                      <span className="block font-semibold mb-1.5">Shared with</span>
+                                      {getOtherRecipients(link).map((person: any) => <button type="button" onClick={(event) => { event.stopPropagation(); openRecipientProfile(person); }} key={person.username} className="block w-full rounded-md px-1 py-1 text-left hover:bg-white/10">{person.displayName?.split(" ")[0] || person.username}</button>)}
+                                    </span>
+                                  </span>
+                                ) : `Shared by ${resolveSenderLabel(link.sender)}`}
                               </p>
                             </div>
 
-                            <div className="flex flex-col justify-between items-end gap-2 flex-shrink-0">
+                            <div className="flex min-h-14 w-[82px] flex-col justify-between items-end gap-2 flex-shrink-0">
+                              <div className="relative flex h-9 w-full items-center justify-end">
+                              <div className="absolute right-0 group-hover:hidden group-focus-within:hidden">
                               {link.type === "shared" &&
                                 (link.status === "unseen"
                                   ? unseenLinkIcon
@@ -882,6 +1099,9 @@ const Dashboard: React.FC = () => {
                                 (link.status === "seen"
                                   ? viewedLinkIcon
                                   : openedLinkIcon)}
+                              </div>
+                              {!(showLinkPreviews && preview?.image) && <div className="absolute right-0 top-0">{itemActions(link)}</div>}
+                              </div>
                               <span className="text-xs text-gray-400 outfit-normal whitespace-nowrap">
                                 {getTimeAgo(link.timestamp)}
                               </span>
@@ -935,6 +1155,36 @@ const Dashboard: React.FC = () => {
               )}
               {acceptedFriends.length > 0 || pendingReceivedRequests.length > 0 || pendingSentRequests.length > 0 ? (
                 <div className="w-full">
+                  <div className="relative mb-4 overflow-hidden rounded-lg bg-[#F5DD90] px-5 py-6">
+                    <div className="flex">
+                      <div className="w-3/5">
+                        <h3 className="text-lg font-semibold outfit-semibold">
+                          Bring your friends aboard
+                        </h3>
+                        <p className="mb-4 text-gray-700 outfit-normal">
+                          Turn everyday links into shared discoveries with friends
+                        </p>
+                        <CustomButton
+                          onClick={handleOpenInviteDialog}
+                          variant="onPrimary"
+                          size="sm"
+                          className="text-[#22162B]"
+                          showArrow={false}
+                          trailingIcon={<UserPlus className="w-4 h-4" />}
+                        >
+                          Invite some friends
+                        </CustomButton>
+                      </div>
+                      <div className="absolute -bottom-1.5 right-0 w-36">
+                        <img
+                          src={inviteIllus}
+                          alt="Link sharing illustration"
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   <CustomButton
                     onClick={() => setShowAddFriend(true)}
                     variant="outlinePrimary"
@@ -1014,7 +1264,7 @@ const Dashboard: React.FC = () => {
                   {acceptedFriends.length > 0 && (
                     <div className="mt-6">
                       <p className="text-gray-500 outfit-normal font-medium mb-2">
-                        Added Friends
+                        Added Friends ({acceptedFriends.length})
                       </p>
                       {acceptedFriends.map((friend) => (
                         <div
@@ -1099,7 +1349,7 @@ const Dashboard: React.FC = () => {
                     className="w-12 h-12 mb-4 text-gray-300"
                   />
                   <p className="text-center text-base font-medium outfit-medium text-gray-800">
-                    No friends in your sharing circle
+                    No friends in your network
                   </p>
                   <p className="text-center text-sm outfit-normal text-gray-500">
                     Search or invite friends to share links with.
@@ -1115,47 +1365,6 @@ const Dashboard: React.FC = () => {
                   </CustomButton>
                 </div>
               )}
-              <div className="bg-[#F5DD90] rounded-lg px-5 py-6 relative overflow-hidden mt-5">
-                <div className="flex">
-                  <div className="w-3/5">
-                    <h3 className="text-lg font-semibold outfit-semibold">
-                      Bring your friends aboard
-                    </h3>
-                    <p className="text-gray-700 outfit-normal mb-4">
-                      Turn everyday links into shared discoveries with friends
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <CustomButton
-                        onClick={handleOpenInviteDialog}
-                        variant="onPrimary"
-                        size="sm"
-                        className="text-[#22162B]"
-                        showArrow={false}
-                        trailingIcon={<UserPlus className="w-4 h-4" />}
-                      >
-                        Invite some friends
-                      </CustomButton>
-                      <CustomButton
-                        onClick={handleCopyInviteLink}
-                        variant="ghost"
-                        size="sm"
-                        className="text-[#22162B] border border-[#22162B]/20 hover:bg-[#22162B]/10"
-                        showArrow={false}
-                        trailingIcon={<ClipboardText className="w-4 h-4" />}
-                      >
-                        {inviteLinkCopied ? "Copied!" : "Copy invite link"}
-                      </CustomButton>
-                    </div>
-                  </div>
-                  <div className="w-36 absolute -bottom-1.5 right-0">
-                    <img
-                      src={inviteIllus}
-                      alt="Link sharing illustration"
-                      className="w-full"
-                    />
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -1181,6 +1390,12 @@ const Dashboard: React.FC = () => {
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+      )}
+
+      {toast && (
+        <div className="pointer-events-none absolute bottom-5 left-1/2 z-40 -translate-x-1/2 rounded-full bg-gray-900 px-4 py-2 text-xs font-medium text-white shadow-lg">
+          {toast}
         </div>
       )}
 
@@ -1245,6 +1460,30 @@ const Dashboard: React.FC = () => {
                 {isSendingInvite ? "Sending..." : "Send Invites"}
               </CustomButton>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedProfile && (
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/50 p-5" onClick={() => setSelectedProfile(null)}>
+          <div className="w-full rounded-lg bg-white p-5 shadow-xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative h-11 w-11 shrink-0">
+                  <img src={selectedProfile.photoURL || "/default-avatar.png"} alt="" className="h-11 w-11 rounded-full object-cover" />
+                  {isLoadingProfile && <Spinner className="absolute inset-0 m-auto h-5 w-5 animate-spin text-[#6C5CE7]" />}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-900">{selectedProfile.displayName || selectedProfile.username}</p>
+                  <p className="text-sm text-gray-500">@{selectedProfile.username}</p>
+                </div>
+              </div>
+              <button title="Close profile" onClick={() => setSelectedProfile(null)} className="rounded-full p-1.5 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mt-4 text-xs text-gray-500">{selectedProfile.joinedAt ? `Joined ${new Date(selectedProfile.joinedAt).toLocaleDateString("en-US", { month: "long", year: "numeric" })}` : "Join date unavailable"}</p>
+            {selectedProfile.uid !== currentUser.uid && (
+              <CustomButton onClick={async () => { if (!selectedProfileRelationship) await addFriend(selectedProfile.username, selectedProfile.uid); setSelectedProfile(null); }} disabled={!!selectedProfileRelationship} variant="primary" fullWidth className="mt-4" showArrow={false} trailingIcon={<UserPlus className="h-4 w-4" />}>{selectedProfileRelationship?.status === "request_sent" ? "Request sent" : selectedProfileRelationship ? "Already friends" : "Add friends"}</CustomButton>
+            )}
           </div>
         </div>
       )}
