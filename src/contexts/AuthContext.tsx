@@ -6,14 +6,10 @@ import React, {
   ReactNode,
 } from "react";
 import { User } from "firebase/auth/web-extension";
+import { SharedContent } from "../shared/content";
 
-interface SharedLink {
-  id: string;
-  link: string;
-  sender: string;
+interface SharedLink extends SharedContent {
   recipients: string[];
-  timestamp: string;
-  status: "unseen" | "seen" | "opened";
   kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed" | "auto_friend_added";
   senderProfile?: {
     uid: string;
@@ -23,12 +19,7 @@ interface SharedLink {
   };
 }
 
-interface ReceivedLink {
-  id: string;
-  link: string;
-  sender: string;
-  timestamp: string;
-  status: "unseen" | "seen" | "opened";
+interface ReceivedLink extends SharedContent {
   kind?: "link" | "friend_added" | "friend_request_received" | "friend_request_accepted" | "friend_request_rejected" | "friend_removed" | "auto_friend_added";
   senderProfile?: {
     uid: string;
@@ -50,6 +41,7 @@ interface Friend {
 
 interface UserSettings {
   showLinkPreviews?: boolean;
+  sharingReminders?: boolean;
 }
 
 interface ExtendedUser extends User {
@@ -57,6 +49,8 @@ interface ExtendedUser extends User {
   friends?: Friend[];
   sharedLinks?: SharedLink[];
   receivedLinks?: ReceivedLink[];
+  bookmarkedLinkIds?: string[];
+  recentShareRecipientUsernames?: string[];
   settings?: UserSettings;
   isNewUser?: boolean;
 }
@@ -71,6 +65,11 @@ interface AuthContextType {
   searchUser: (username: string) => Promise<ExtendedUser[]>;
   removeFriend: (friendUsername: string) => Promise<void>;
   shareLink: (link: string, selectedFriends: string[]) => Promise<void>;
+  shareText: (text: string, selectedFriends: string[]) => Promise<void>;
+  toggleLike: (linkId: string, liked: boolean) => Promise<void>;
+  toggleBookmark: (linkId: string, bookmarked: boolean) => Promise<void>;
+  editText: (linkId: string, text: string) => Promise<void>;
+  deleteContent: (linkId: string) => Promise<void>;
   updateLinkStatus: (
     linkId: string,
     status: "unseen" | "seen" | "opened",
@@ -175,6 +174,7 @@ function dedupeFriendsByIdentity(
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const searchCache = new Map<string, { expiresAt: number; users: ExtendedUser[] }>();
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -491,6 +491,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       const normalizedSearchTerm = searchTerm.trim().replace(/^@/, "");
       if (!normalizedSearchTerm) return [];
+      const cacheKey = normalizedSearchTerm.toLowerCase();
+      const cached = searchCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) return cached.users;
 
       const response = await new Promise<{ success: boolean; users?: ExtendedUser[]; error?: string }>((resolve, reject) => {
         chrome.runtime.sendMessage(
@@ -512,7 +515,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error((response && response.error) || "Failed to search for user");
       }
 
-      return response.users || [];
+      const users = response.users || [];
+      searchCache.set(cacheKey, { users, expiresAt: Date.now() + 5 * 60 * 1000 });
+      return users;
     } catch (error) {
       console.error("Error searching for user:", error);
       throw new Error("Failed to search for user");
@@ -552,6 +557,78 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const sendContent = async (content: { link?: string; text?: string; contentType: "link" | "text" }, selectedFriends: string[]) => {
+    const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "SHARE_CONTENT", ...content, selectedFriends }, (res) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      });
+    });
+    if (!response?.success) throw new Error(response?.error || "Failed to share");
+  };
+
+  const shareText = async (text: string, selectedFriends: string[]) => {
+    if (!currentUser) throw new Error("No user logged in");
+    await sendContent({ text, contentType: "text" }, selectedFriends);
+  };
+
+  const updateContent = async (message: { type: "TOGGLE_LIKE" | "TOGGLE_BOOKMARK"; linkId: string; value: boolean }) => {
+    const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (res) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      });
+    });
+    if (!response?.success) throw new Error(response?.error || "Could not update item");
+  };
+
+  const toggleLike = async (linkId: string, liked: boolean) => {
+    if (!currentUser) throw new Error("No user logged in");
+    const previousUser = currentUser;
+    const updateItems = <T extends SharedContent>(items: T[] | undefined): T[] =>
+      (items || []).map((item) => item.id === linkId ? {
+        ...item,
+        likedBy: liked
+          ? Array.from(new Set([...(item.likedBy || []), currentUser.username || ""]))
+          : (item.likedBy || []).filter((username) => username !== currentUser.username),
+      } as T : item);
+    const optimisticUser = {
+      ...currentUser,
+      sharedLinks: updateItems(currentUser.sharedLinks),
+      receivedLinks: updateItems(currentUser.receivedLinks),
+    };
+    setCurrentUser(optimisticUser);
+    chrome.storage.local.set({ user: optimisticUser });
+    try {
+      await updateContent({ type: "TOGGLE_LIKE", linkId, value: liked });
+    } catch (error) {
+      setCurrentUser(previousUser);
+      chrome.storage.local.set({ user: previousUser });
+      throw error;
+    }
+  };
+  const toggleBookmark = async (linkId: string, bookmarked: boolean) => updateContent({ type: "TOGGLE_BOOKMARK", linkId, value: bookmarked });
+
+  const editText = async (linkId: string, text: string) => {
+    const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "EDIT_TEXT", linkId, text }, (res) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      });
+    });
+    if (!response?.success) throw new Error(response?.error || "Could not edit text");
+  };
+
+  const deleteContent = async (linkId: string) => {
+    const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "DELETE_CONTENT", linkId }, (res) => {
+        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+        else resolve(res);
+      });
+    });
+    if (!response?.success) throw new Error(response?.error || "Could not delete item");
+  };
+
   // Update the updateLinkStatus function in AuthContext:
 
   const updateLinkStatus = async (
@@ -584,7 +661,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const updateSettings = async (
-    settings: Partial<{ showLinkPreviews?: boolean }>,
+    settings: Partial<UserSettings>,
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
@@ -604,7 +681,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         return updatedUser;
       });
 
-      chrome.runtime.sendMessage({ type: "UPDATE_SETTINGS", uid: currentUser.uid, settings });
+      chrome.runtime.sendMessage({ type: "UPDATE_SETTINGS", uid: currentUser.uid, settings: newSettings });
     } catch (error) {
       console.error("Error updating settings:", error);
       throw new Error("Failed to update settings");
@@ -707,6 +784,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     searchUser,
     removeFriend,
     shareLink,
+    shareText,
+    toggleLike,
+    toggleBookmark,
+    editText,
+    deleteContent,
     updateLinkStatus,
     acceptFriend,
     rejectFriend,

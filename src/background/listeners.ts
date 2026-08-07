@@ -3,7 +3,8 @@ import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInte
 import { checkForNewLinks, updateBadge } from "./sync";
 import { refreshFriendProfiles } from "./friendsSync";
 import { openExtensionUi } from "./ui";
-import { handleUpdateLinkStatusMessage, shareLink } from "./links";
+import { deleteContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
+import { ensureSharingReminderAlarm, maybeShowSharingReminder, SHARING_REMINDER_ALARM } from "./reminders";
 
 const CHECK_NEW_LINKS_ALARM = "checkNewLinks";
 const QUICK_SYNC_THROTTLE_MS = 10000;
@@ -31,7 +32,9 @@ export function registerBackgroundListeners() {
   chrome.notifications.onClicked.addListener((notificationId) => {
     if (
       notificationId.startsWith("link-") ||
-      notificationId.startsWith("friend-")
+      notificationId.startsWith("friend-") ||
+      notificationId.startsWith("like:") ||
+      notificationId.startsWith("sharing-reminder-")
     ) {
       openExtensionUi();
       chrome.notifications.clear(notificationId);
@@ -49,6 +52,8 @@ export function registerBackgroundListeners() {
   chrome.alarms.onAlarm.addListener(async (alarm) => {
     if (alarm.name === CHECK_NEW_LINKS_ALARM) {
       await checkForNewLinks();
+    } else if (alarm.name === SHARING_REMINDER_ALARM) {
+      await maybeShowSharingReminder();
     }
   });
 
@@ -59,12 +64,14 @@ export function registerBackgroundListeners() {
       contexts: ["page"],
     });
     ensureCheckNewLinksAlarm();
+    ensureSharingReminderAlarm();
     triggerQuickSync("onInstalled");
     updateBadge();
   });
 
   chrome.runtime.onStartup.addListener(() => {
     ensureCheckNewLinksAlarm();
+    ensureSharingReminderAlarm();
     triggerQuickSync("onStartup");
     updateBadge();
   });
@@ -100,6 +107,7 @@ export function registerBackgroundListeners() {
 
   // Initial badge check when service worker starts
   ensureCheckNewLinksAlarm();
+  ensureSharingReminderAlarm();
   triggerQuickSync("serviceWorkerStart");
   updateBadge();
 
@@ -170,6 +178,20 @@ export function registerBackgroundListeners() {
         .catch((error) =>
           sendResponse({ success: false, error: error.message }),
         );
+      return true;
+    } else if (message.type === "SHARE_CONTENT") {
+      shareContent({ link: message.link, text: message.text, contentType: message.contentType }, message.selectedFriends)
+        .then(() => sendResponse({ success: true }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "TOGGLE_LIKE" || message.type === "TOGGLE_BOOKMARK") {
+      handleToggleContentMessage(message, sendResponse);
+      return true;
+    } else if (message.type === "EDIT_TEXT") {
+      editText(message.linkId, message.text).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "DELETE_CONTENT") {
+      deleteContent(message.linkId).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
       return true;
     } else if (message.type === "REFRESH_DATA") {
       checkForNewLinks()
