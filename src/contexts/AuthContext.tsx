@@ -73,6 +73,8 @@ interface AuthContextType {
   updateLinkStatus: (
     linkId: string,
     status: "unseen" | "seen" | "opened",
+    senderUsername?: string,
+    senderUid?: string,
   ) => Promise<void>;
   acceptFriend: (friendUsername: string) => Promise<void>;
   rejectFriend: (friendUsername: string) => Promise<void>;
@@ -634,26 +636,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const updateLinkStatus = async (
     linkId: string,
     status: "unseen" | "seen" | "opened",
+    senderUsername?: string,
+    senderUid?: string,
   ) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      const updatedReceivedLinks = (currentUser.receivedLinks || []).map(
-        (link: ReceivedLink) =>
-          link.id === linkId ? { ...link, status } : link,
-      );
-
-      // Update local state optimistically
+      // Update local state optimistically. The mapping runs inside the
+      // functional updater so rapid sequential calls can't clobber each
+      // other with a stale snapshot.
       setCurrentUser((prevUser) => {
         if (!prevUser) return null;
         const updatedUser = {
           ...prevUser,
-          receivedLinks: updatedReceivedLinks,
+          receivedLinks: (prevUser.receivedLinks || []).map((link: ReceivedLink) =>
+            link.id === linkId ? { ...link, status } : link,
+          ),
         };
         chrome.storage.local.set({ user: updatedUser });
         return updatedUser;
       });
 
-      chrome.runtime.sendMessage({ type: "UPDATE_LINK_STATUS", linkId, status });
+      // Single background message carrying the sender identity, so the
+      // sender's recipientStatuses update isn't lost. senderUid is stable
+      // across username changes; senderUsername is a fallback.
+      const message: Record<string, unknown> = { type: "UPDATE_LINK_STATUS", linkId, status };
+      if (senderUsername) message.senderUsername = senderUsername;
+      if (senderUid) message.senderUid = senderUid;
+      chrome.runtime.sendMessage(message);
     } catch (error) {
       console.error("Error updating link status:", error);
       throw new Error("Failed to update link status");
