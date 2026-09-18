@@ -1,13 +1,13 @@
 {
   "name": "linkpaddy",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "The easiest way to share links with your inner circle",
   "main": "index.js",
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack --mode development --watch",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/content.test.ts"
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
     "@fontsource/inter": "^5.2.8",
