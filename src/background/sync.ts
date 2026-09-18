@@ -10,6 +10,14 @@ import {
 import { Friend, SharedLink } from "./types";
 import { getFriendProfile, resolveFriendRefByUsername } from "./friends";
 import {
+  MAX_STORED_RECEIVED_LINKS,
+  MAX_STORED_SHARED_LINKS,
+  ensureRecipientStatuses,
+  trimNewest,
+  updateRecipientStatus,
+} from "../shared/content";
+import { serializeStatusWrite } from "./links";
+import {
   BackgroundAuthNotReadyError,
   requireMatchingAuthUser,
 } from "./authState";
@@ -83,6 +91,113 @@ async function enrichLegacyRecipientData(
   }
 
   return { links, changed };
+}
+
+const SEEN_HEAL_THROTTLE_MS = 60 * 60 * 1000;
+
+/**
+ * Seed recipientStatuses on sent links created before that field existed,
+ * so the sender's recipient sheet can list every recipient instead of
+ * falling back to a permanently "Not seen" aggregate.
+ */
+async function backfillSharedRecipientStatuses(
+  userRef: ReturnType<typeof doc>,
+  sharedLinks: SharedLink[],
+): Promise<SharedLink[]> {
+  let changed = false;
+  const links = sharedLinks.map((link) => {
+    if (
+      (!link.recipientStatuses || link.recipientStatuses.length === 0) &&
+      ((link.recipients || []).length > 0 || (link.recipientProfiles || []).length > 0)
+    ) {
+      changed = true;
+      return { ...link, recipientStatuses: ensureRecipientStatuses(link) };
+    }
+    return link;
+  });
+
+  if (changed) {
+    await updateDoc(userRef, { sharedLinks: links });
+  }
+  return links;
+}
+
+/**
+ * One-way heal for recipient sheets stuck on "Not seen": for links this
+ * device already marked seen/opened, push that status into the sender's
+ * sharedLinks copy. Runs at most once an hour so a normal sync stays cheap.
+ */
+async function maybePushSeenStatusesToSenders(
+  currentUser: any,
+  receivedLinks: SharedLink[],
+): Promise<void> {
+  try {
+    const { lastSeenHealAt } = await chrome.storage.local.get(["lastSeenHealAt"]);
+    if (lastSeenHealAt && Date.now() - lastSeenHealAt < SEEN_HEAL_THROTTLE_MS) return;
+    await chrome.storage.local.set({ lastSeenHealAt: Date.now() });
+  } catch {
+    // Storage unavailable — still attempt the heal once.
+  }
+
+  const seenLinks = receivedLinks.filter(
+    (link) =>
+      (link.status === "seen" || link.status === "opened") &&
+      (!link.kind || (link.kind !== "friend_added" && !link.kind.startsWith("friend_request_") && link.kind !== "friend_removed")),
+  );
+  if (seenLinks.length === 0) return;
+
+  const ownProfile = {
+    uid: currentUser?.uid,
+    username: currentUser?.username,
+    displayName: currentUser?.displayName,
+    photoURL: currentUser?.photoURL,
+    joinedAt: currentUser?.joinedAt,
+  };
+
+  const bySender = new Map<string, { uid: string; username: string; links: SharedLink[] }>();
+  for (const link of seenLinks) {
+    const uid = typeof (link as any).senderUid === "string" ? (link as any).senderUid.trim() : "";
+    const username = typeof link.sender === "string" ? link.sender.trim().replace(/^@/, "").toLowerCase() : "";
+    const key = uid ? `uid:${uid}` : username ? `username:${username}` : "";
+    if (!key) continue;
+    const group = bySender.get(key) || { uid, username, links: [] as SharedLink[] };
+    group.links.push(link);
+    bySender.set(key, group);
+  }
+
+  const now = new Date().toISOString();
+  for (const group of bySender.values()) {
+    try {
+      // Read and rewrite the sender doc inside the shared serializer so a
+      // concurrent status update can't interleave and drop entries.
+      await serializeStatusWrite(async () => {
+        const senderRef = group.uid
+          ? doc(db, "users", group.uid)
+          : (await resolveFriendRefByUsername(group.username))?.ref;
+        if (!senderRef) return;
+        const senderSnap = await getDoc(senderRef);
+        if (!senderSnap.exists()) return;
+        const sharedLinks = ((senderSnap.data()?.sharedLinks || []) as SharedLink[]);
+        let changed = false;
+        const next = sharedLinks.map((item) => {
+          const mine = group.links.find((link) => link.id === item.id);
+          if (!mine) return item;
+          const seeded = ensureRecipientStatuses(item);
+          const updated = updateRecipientStatus(seeded, ownProfile as any, mine.status as "seen" | "opened", now);
+          if (JSON.stringify(updated) !== JSON.stringify(seeded)) {
+            changed = true;
+            return { ...item, recipientStatuses: updated };
+          }
+          return item;
+        });
+        if (changed) {
+          await updateDoc(senderRef, { sharedLinks: next });
+        }
+      });
+    } catch (error) {
+      console.warn("Seen-status heal blocked for sender:", group.username || group.uid, error);
+    }
+  }
 }
 
 async function runLinksSync() {
