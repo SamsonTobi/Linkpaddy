@@ -59,15 +59,13 @@
   "commands": {
     "share-current-tab": {
       "suggested_key": {
-        "default": "Ctrl+Space",
-        "mac": "Alt+Shift+L"
+        "default": "Ctrl+Shift+L"
       },
       "description": "__MSG_shareCurrentTabCommand__"
     },
     "share-current-tab-mac-alt": {
       "suggested_key": {
-        "windows": "Ctrl+Shift+L",
-        "mac": "MacCtrl+Shift+L"
+        "default": "Alt+Shift+L"
       },
       "description": "__MSG_shareCurrentTabCommand__"
     }

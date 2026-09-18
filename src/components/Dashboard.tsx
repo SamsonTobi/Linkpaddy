@@ -1568,9 +1568,9 @@ const Dashboard: React.FC = () => {
             <span className="truncate">
               <span className="opacity-70">Quick share: Press </span>
               {isMac ? (
-                <span className="font-semibold">Alt+Shift+L</span>
+                <span className="font-semibold">Command+Shift+L</span>
               ) : (
-                <span className="font-semibold">Ctrl+Space</span>
+                <span className="font-semibold">Ctrl+Shift+L</span>
               )}
               <span className="opacity-70"> to send the current tab</span>
             </span>
