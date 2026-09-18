@@ -339,56 +339,51 @@ const ShareLink: React.FC<ShareLinkProps> = ({
 
               {filteredFriends.length > 0 ? (
                 <>
-                  <div className="space-y-2 max-h-52 overflow-y-auto">
-                    {filteredFriends.map((friend) => (
-                      <label
-                        key={friend.key}
-                        className="flex items-center cursor-pointer gap-2 p-3 border rounded-lg"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedFriendKeys.includes(friend.key)}
-                          onChange={() => toggleFriend(friend.key)}
-                          disabled={isSharing}
-                          className="w-4 h-4 accent-[#6C5CE7] outfit-normal text-sm shrink-0"
-                        />
-                        <div className="flex ml-2 items-center gap-2 min-w-0">
-                          <img
-                            src={friend.photoURL || "/default-avatar.png"}
-                            alt={`${friend.username}'s avatar`}
-                            className="w-7 h-7 rounded-full object-cover shrink-0"
+                  <div className="grid max-h-64 grid-cols-3 gap-3 overflow-y-auto p-1">
+                    {filteredFriends.map((friend) => {
+                      const selected = selectedFriendKeys.includes(friend.key);
+                      return (
+                        <label
+                          key={friend.key}
+                          className={`flex cursor-pointer flex-col items-center gap-1.5 rounded-xl border p-3 text-center transition-transform duration-150 hover:scale-[1.03] active:scale-95 ${selected ? "border-[#6C5CE7] bg-indigo-50/60 ring-1 ring-[#6C5CE7]" : "border-gray-200"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleFriend(friend.key)}
+                            disabled={isSharing}
+                            className="sr-only"
                           />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <p className="font-medium text-sm outfit-medium truncate">
+                          <span className="relative">
+                            <img
+                              src={friend.photoURL || "/default-avatar.png"}
+                              alt={`${friend.username}'s avatar`}
+                              className="h-12 w-12 rounded-full object-cover"
+                            />
+                            {selected && (
+                              <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-[#6C5CE7] text-white">
+                                <Check className="h-3 w-3" weight="bold" />
+                              </span>
+                            )}
+                          </span>
+                          <span className="w-full">
+                            <span className="flex items-center justify-center gap-1">
+                              <span className="truncate font-medium text-xs outfit-medium">
                                 {friend.displayName}
-                              </p>
+                              </span>
                               {friend.status === "request_sent" && (
                                 <span className="shrink-0 text-[10px] font-medium text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded-full leading-none">
                                   Pending
                                 </span>
                               )}
-                            </div>
-                            <p className="outfit-normal text-gray-400 text-sm -mt-0.5 truncate">
+                            </span>
+                            <span className="block truncate text-gray-400 text-[11px] outfit-normal">
                               @{friend.username}
-                            </p>
-                          </div>
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                  <div>
-                    <CustomButton
-                      type="submit"
-                      disabled={isSharing}
-                      variant="primary"
-                      fullWidth
-                      className="mt-2 outfit-semibold"
-                      showArrow={false}
-                      trailingIcon={<PaperPlaneTilt className="w-5 h-5" />}
-                    >
-                      {isSharing ? "Sharing..." : "Share"}
-                    </CustomButton>
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </>
               ) : uniqueFriends.length > 0 ? (
