@@ -106,7 +106,7 @@ export function updateRecipientStatus(
   const previous = existing.find((person) => normalizeUsername(person.username) === username);
   const next: RecipientStatus = {
     ...previous,
-    ...profile,
+    ...sanitizePublicProfile(profile),
     username,
     status,
     ...(status !== "unseen" ? { seenAt: previous?.seenAt || now } : {}),
