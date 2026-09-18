@@ -27,10 +27,10 @@ let syncQueued = false;
 
 async function getUserSnapshot(userRef: ReturnType<typeof doc>) {
   try {
-    return await getDocFromServer(userRef);
+    return { snap: await getDocFromServer(userRef), fromServer: true };
   } catch (error) {
     console.warn("Falling back to cached Firestore doc read:", error);
-    return await getDoc(userRef);
+    return { snap: await getDoc(userRef), fromServer: false };
   }
 }
 
@@ -49,7 +49,7 @@ async function enrichLegacyRecipientData(
       try {
         const senderRef = await resolveFriendRefByUsername(receivedLink.sender);
         if (!senderRef) return receivedLink;
-        const senderSnapshot = await getUserSnapshot(senderRef.ref);
+        const senderSnapshot = (await getUserSnapshot(senderRef.ref)).snap;
         const senderData = senderSnapshot.data() || {};
         const senderLink = (senderData.sharedLinks || []).find(
           (item: SharedLink) => item.id === receivedLink.id,
@@ -207,9 +207,22 @@ async function runLinksSync() {
   await requireMatchingAuthUser(result.user.uid);
 
   const userRef = doc(db, "users", result.user.uid);
-  const userSnap = await getUserSnapshot(userRef);
+  const { snap: userSnap, fromServer } = await getUserSnapshot(userRef);
 
-  if (!userSnap.exists()) return;
+  if (!userSnap.exists()) {
+    if (fromServer) {
+      // The server confirms this account is gone (deleted elsewhere) —
+      // the only case where dropping the local session is correct.
+      // Offline cache misses must never log the user out.
+      await chrome.storage.local.remove("user");
+      try {
+        chrome.runtime.sendMessage({ type: "SIGN_OUT_FORCED" });
+      } catch {
+        // Popup might not be open — it reads storage on open anyway.
+      }
+    }
+    return;
+  }
 
   const userData = userSnap.data();
   const oldReceivedLinks: SharedLink[] = result.user.receivedLinks || [];
