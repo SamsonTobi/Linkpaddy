@@ -24,6 +24,37 @@ function normalizeUsername(value: unknown): string {
   return value.trim().replace(/^@/, "").toLowerCase();
 }
 
+// Retried fetch for wake-from-idle sign-ins, where the network often isn't
+// up yet on the first attempt (the raw failure used to surface as the
+// cryptic "Failed to fetch" on the login screen).
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  attempts = 3,
+): Promise<Response> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
+
+/** Map low-level network failures to copy the login screen can show. */
+function friendlySignInError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Unknown error occurred";
+  if (/failed to fetch|networkerror|network request failed|load failed/i.test(message)) {
+    return "Couldn't reach Google — check your connection and try again";
+  }
+  return message;
+}
+
 function buildUsernameBase(displayName: unknown): string {
   const normalized =
     typeof displayName === "string"
@@ -102,7 +133,7 @@ export async function signIn() {
       throw new Error("No access token in response");
     }
 
-    const response = await fetch(
+    const response = await fetchWithRetry(
       "https://www.googleapis.com/oauth2/v3/userinfo",
       {
         headers: { Authorization: `Bearer ${token}` },
@@ -231,7 +262,7 @@ export async function signIn() {
     console.error("Sign-in error:", error);
     chrome.runtime.sendMessage({
       type: "SIGN_IN_ERROR",
-      error: error instanceof Error ? error.message : "Unknown error occurred",
+      error: friendlySignInError(error),
     });
   }
 }
