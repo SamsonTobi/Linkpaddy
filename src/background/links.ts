@@ -1,12 +1,16 @@
 import { db } from "../firebase";
-import { arrayUnion, doc, getDoc, updateDoc } from "firebase/firestore";
+import { arrayUnion, doc, getDoc, updateDoc, writeBatch } from "firebase/firestore";
 import { resolveFriendRefByUsername } from "./friends";
 import { requireMatchingAuthUser } from "./authState";
 import {
   ContentStatus,
   PublicProfile,
   SharedContent,
+  buildRecipientStatuses,
+  ensureRecipientStatuses,
   normalizeUsername,
+  parseLinkList,
+  sanitizePublicProfile,
   updateLike,
   updateRecipientStatus,
   validateContent,
@@ -37,13 +41,13 @@ async function getStoredUser(): Promise<StoredUser> {
 }
 
 function profileFromUser(user: StoredUser): PublicProfile {
-  return {
+  return sanitizePublicProfile({
     uid: user.uid,
-    username: normalizeUsername(user.username),
+    username: user.username,
     displayName: user.displayName,
     photoURL: user.photoURL,
     joinedAt: user.joinedAt,
-  };
+  });
 }
 
 async function resolveProfile(user: StoredUser, username: string) {
@@ -52,7 +56,7 @@ async function resolveProfile(user: StoredUser, username: string) {
     (friend) => normalizeUsername(friend.username) === normalized,
   );
   if (local?.uid) {
-    return { profile: { ...local, username: normalized }, ref: doc(db, "users", local.uid) };
+    return { profile: sanitizePublicProfile({ ...local, username: normalized }), ref: doc(db, "users", local.uid) };
   }
   const resolved = await resolveFriendRefByUsername(normalized);
   if (!resolved) return null;
@@ -60,13 +64,13 @@ async function resolveProfile(user: StoredUser, username: string) {
   const data = snapshot.data() || {};
   return {
     ref: resolved.ref,
-    profile: {
+    profile: sanitizePublicProfile({
       uid: resolved.uid,
       username: normalized,
       displayName: data.displayName,
       photoURL: data.photoURL,
       joinedAt: data.joinedAt,
-    } as PublicProfile,
+    }),
   };
 }
 
@@ -216,13 +220,14 @@ async function toggleLike(linkId: string, liked: boolean) {
 
   const patch: any = { sharedLinks };
   if (liked && senderData.uid !== user.uid) {
+    const actorUsername = normalizeUsername(user.username);
     patch.activityNotifications = arrayUnion({
       id: `like:${linkId}:${user.uid}`,
       type: "link_liked",
       shareId: linkId,
       actorUid: user.uid,
-      actorUsername: user.username,
-      actorFirstName: user.displayName?.split(/\s+/)[0] || user.username,
+      actorUsername,
+      actorFirstName: (typeof user.displayName === "string" ? user.displayName.split(/\s+/)[0] : "") || actorUsername,
       createdAt: new Date().toISOString(),
       read: false,
     });
