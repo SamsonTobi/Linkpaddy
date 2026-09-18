@@ -719,6 +719,16 @@ const Dashboard: React.FC = () => {
       (person) => person.username?.toLowerCase() !== currentUser.username?.toLowerCase(),
     );
 
+  // The sender's top-level link.status is frozen at "unseen" from share
+  // time, so derive the sent eye icon from per-recipient statuses.
+  const sentStatusIcon = (link: any) => {
+    const aggregate = aggregateRecipientStatus(link.recipientStatuses, link.status);
+    return aggregate === "unseen" ? unseenLinkIcon : aggregate === "seen" ? viewedLinkIcon : openedLinkIcon;
+  };
+
+  const recipientStatusLabel = (status: unknown) =>
+    status === "opened" ? "Opened" : status === "seen" ? "Seen" : status === "unseen" ? "Not seen" : "Recipient";
+
   const openRecipientProfile = async (person: any) => {
     const username = String(person.username || "").toLowerCase();
     const localFriend = currentUser.friends?.find(
@@ -753,7 +763,7 @@ const Dashboard: React.FC = () => {
     <div className={`relative flex items-center gap-0.5 rounded-full p-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity ${onPreview ? "bg-black/60 text-white backdrop-blur-sm" : "bg-gray-100 text-gray-600"}`}>
       {link.contentType !== "text" && <button title="Like" onClick={(event) => toggleItemLike(event, link)} className={`rounded-full p-1.5 hover:bg-white/20 ${(link.likedBy || []).includes(currentUser.username || "") ? "text-rose-400" : "text-current"}`}><Heart weight={(link.likedBy || []).includes(currentUser.username || "") ? "fill" : "regular"} className="h-[19px] w-[19px]" /></button>}
       <button title="More options" onClick={(event) => { event.stopPropagation(); setOpenMoreId(openMoreId === link.id ? null : link.id); }} className="rounded-full p-1.5 text-current hover:bg-white/20"><DotsThreeVertical className="h-[19px] w-[19px]" /></button>
-      {openMoreId === link.id && <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-lg border border-gray-100 bg-white p-1 text-left shadow-lg">
+      {openMoreId === link.id && <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-lg border border-gray-100 bg-white p-1 text-left text-gray-900 shadow-lg">
         <button onClick={(event) => copyItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><Copy className="h-3.5 w-3.5" /> {link.contentType === "text" ? "Copy text" : "Copy link"}</button>
         {link.contentType !== "text" && <button onClick={(event) => toggleItemBookmark(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><BookmarkSimple className="h-3.5 w-3.5" /> {isBookmarked(link.id) ? "Unsave" : "Bookmark"}</button>}
         {link.type === "shared" && link.contentType === "text" && <button onClick={(event) => startEditing(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><PencilSimple className="h-3.5 w-3.5" /> Edit text</button>}
@@ -1090,7 +1100,7 @@ const Dashboard: React.FC = () => {
                                     <span className="underline decoration-dotted underline-offset-2">Sent to {getRecipients(link).map((person: any) => person.displayName?.split(" ")[0] || person.username).join(", ")}</span>
                                     <span className="absolute left-0 bottom-[calc(100%-2px)] hidden group-hover/recipients:block group-focus/recipients:block z-20 w-60 rounded-xl bg-gray-900 p-3 text-left text-xs text-white shadow-xl">
                                       <span className="block font-semibold mb-1.5">Recipients</span>
-                                      {getRecipients(link).map((person: any) => <button type="button" onClick={(event) => { event.stopPropagation(); openRecipientProfile(person); }} key={person.username} className="flex w-full justify-between rounded-md px-1 py-1 text-left hover:bg-white/10"><span>{person.displayName?.split(" ")[0] || person.username}</span><span className="text-gray-400 capitalize">{person.status === "unseen" ? "Not seen" : person.status || "Recipient"}</span></button>)}
+                                      {getRecipients(link).map((person: any) => <button type="button" onClick={(event) => { event.stopPropagation(); openRecipientProfile(person); }} key={person.username} className="flex w-full justify-between rounded-md px-1 py-1 text-left hover:bg-white/10"><span>{person.displayName?.split(" ")[0] || person.username}</span><span className="text-gray-400">{recipientStatusLabel(person.status)}</span></button>)}
                                     </span>
                                   </span>
                                 ) : getOtherRecipients(link).length > 0 ? (
@@ -1108,12 +1118,7 @@ const Dashboard: React.FC = () => {
                             <div className="flex min-h-14 w-[82px] flex-col justify-between items-end gap-2 flex-shrink-0">
                               <div className="relative flex h-9 w-full items-center justify-end">
                               <div className="absolute right-0 group-hover:hidden group-focus-within:hidden">
-                              {link.type === "shared" &&
-                                (link.status === "unseen"
-                                  ? unseenLinkIcon
-                                  : link.status === "seen"
-                                    ? viewedLinkIcon
-                                    : openedLinkIcon)}
+                              {link.type === "shared" && sentStatusIcon(link)}
                               {link.type === "received" &&
                                 (link.status === "seen"
                                   ? viewedLinkIcon
