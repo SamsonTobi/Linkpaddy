@@ -198,7 +198,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const storageListener = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
-      if (areaName === "local" && changes.user && changes.user.newValue) {
+      if (areaName === "local" && changes.user) {
+        if (!changes.user.newValue) {
+          // Session was invalidated (e.g. account deleted elsewhere).
+          setCurrentUser(null);
+          setIsNewUser(false);
+          return;
+        }
         const userData = changes.user.newValue;
         setCurrentUser({
           ...userData,
