@@ -29,6 +29,7 @@ import SettingsComponent from "./Settings";
 import AddFriend from "./AddFriend";
 import CustomButton from "./ui/CustomButton";
 import { inviteIllus } from "../assets/image";
+import { aggregateRecipientStatus } from "../shared/content";
 
 const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
@@ -121,6 +122,11 @@ const Dashboard: React.FC = () => {
     "all",
   );
   const [showShareLink, setShowShareLink] = useState(false);
+  const [sharePrefill, setSharePrefill] = useState<{
+    initialLink?: string;
+    skipToFriends?: boolean;
+    initialSelectedUsernames?: string[];
+  } | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<string | null>(null);
@@ -535,27 +541,34 @@ const Dashboard: React.FC = () => {
     loadPreviews();
   }, [sortedLinks, showLinkPreviews]);
 
-  // Mark unseen received links as "seen" when viewing the links tab
+  // Mark unseen received links as "seen" when viewing the links tab.
+  // Sequential, one message per link (with sender identity): the old code
+  // fired two background messages per link in parallel, causing
+  // read-modify-write races on the same Firestore docs that dropped
+  // updates and left senders stuck on "Not seen".
   useEffect(() => {
     if (activeTab !== "links" || !currentUser) return;
 
     const unseenLinks = sortedLinks.filter(
       (link) => link.type === "received" && link.status === "unseen",
     );
+    if (unseenLinks.length === 0) return;
 
-    unseenLinks.forEach(async (link) => {
-      try {
-        await updateLinkStatus(link.id, "seen");
-        chrome.runtime.sendMessage({
-          type: "UPDATE_LINK_STATUS",
-          linkId: link.id,
-          status: "seen",
-          senderUsername: link.sender,
-        });
-      } catch (error) {
-        console.error("Error marking link as seen:", error);
+    let cancelled = false;
+    (async () => {
+      for (const link of unseenLinks) {
+        if (cancelled) break;
+        try {
+          await updateLinkStatus(link.id, "seen", link.sender, (link as any).senderUid);
+        } catch (error) {
+          console.error("Error marking link as seen:", error);
+        }
       }
-    });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeTab, sortedLinks]);
 
   if (!currentUser) {
@@ -563,7 +576,17 @@ const Dashboard: React.FC = () => {
   }
 
   if (showShareLink) {
-    return <ShareLink onBack={() => setShowShareLink(false)} />;
+    return (
+      <ShareLink
+        onBack={() => {
+          setShowShareLink(false);
+          setSharePrefill(null);
+        }}
+        initialLink={sharePrefill?.initialLink}
+        skipToFriends={sharePrefill?.skipToFriends}
+        initialSelectedUsernames={sharePrefill?.initialSelectedUsernames}
+      />
+    );
   }
 
   if (showSettings) {
@@ -620,14 +643,7 @@ const Dashboard: React.FC = () => {
     }
     if (link.type === "received" && link.status !== "opened") {
       try {
-        await updateLinkStatus(link.id, "opened");
-
-        chrome.runtime.sendMessage({
-          type: "UPDATE_LINK_STATUS",
-          linkId: link.id,
-          status: "opened",
-          senderUsername: link.sender,
-        });
+        await updateLinkStatus(link.id, "opened", link.sender, (link as any).senderUid);
 
         window.open(link.link, "_blank");
       } catch (error) {
@@ -791,7 +807,10 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <CustomButton
-            onClick={() => setShowShareLink(true)}
+            onClick={() => {
+              setSharePrefill(null);
+              setShowShareLink(true);
+            }}
             variant="primary"
             size="md"
             className="rounded-full px-5 py-2.5 font-medium"
