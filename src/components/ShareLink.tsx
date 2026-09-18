@@ -237,17 +237,21 @@ const ShareLink: React.FC<ShareLinkProps> = ({
               <textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Share a thought with your circle..." maxLength={1000} className="w-full min-h-32 resize-none border border-gray-200 rounded-xl p-4 outfit-normal focus:outline-none focus:ring-2 focus:ring-[#6C5CE7]" disabled={isSharing} />
               <p className="mt-1 text-right text-xs text-gray-400">{text.length}/1000</p>
             </div>
-          ) : <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
+          ) : <div>
+            <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
             <LinkSimple className="w-5 h-5 mr-3 text-gray-400" />
             <input
-              type="url"
+              type="text"
+              inputMode="url"
               value={link}
               onChange={(e) => setLink(e.target.value)}
-              placeholder="Enter the link you want to share"
+              placeholder="Enter the link(s) you want to share"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
               disabled={isSharing}
               required
             />
+            </div>
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-gray-400 outfit-normal"><Info className="h-3.5 w-3.5 shrink-0" /> Tip: share multiple links at once — separate them with commas.</p>
           </div>}
 
           {contentType === "link" && !link && clipboardLink && !hasUsedClipboard && (
