@@ -121,83 +121,158 @@ export async function shareContent(
   input: { link?: string; text?: string; contentType: "link" | "text" },
   selectedFriends: string[],
 ) {
-  const content = validateContent(input);
   const recipients = Array.from(new Set(selectedFriends.map(normalizeUsername).filter(Boolean)));
   if (recipients.length === 0) throw new Error("Please select at least one friend");
+  if (recipients.length > 400) throw new Error("Too many recipients at once");
 
   const user = await getStoredUser();
-  const resolvedRecipients = [];
-  for (const username of recipients) {
-    const resolved = await resolveProfile(user, username);
-    if (!resolved) throw new Error(`Could not find @${username}`);
-    resolvedRecipients.push(resolved);
-  }
+  // Recipient lookups run concurrently and are usually free: known friends
+  // resolve from the local list with zero network round trips.
+  const settled = await Promise.all(recipients.map((username) => resolveProfile(user, username)));
+  const missing = recipients.filter((_, index) => !settled[index]);
+  if (missing.length > 0) throw new Error(`Could not find @${missing[0]}`);
+  const resolvedRecipients = settled as NonNullable<Awaited<ReturnType<typeof resolveProfile>>>[];
+
+  // One item per link (comma-separated input supported); a single text is
+  // one item. Per-link ids keep seen/like state independent with no UI changes.
+  const contents =
+    input.contentType === "text"
+      ? [validateContent(input)]
+      : parseLinkList(input.link).map((link) => ({ contentType: "link" as const, link }));
 
   const timestamp = new Date().toISOString();
-  const id = `${Date.now()}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`;
-  const recipientProfiles = resolvedRecipients.map(({ profile }) => profile);
-  const item: SharedContent = {
-    id,
+  const base = Date.now();
+  const sender = normalizeUsername(user.username);
+  const recipientProfiles = resolvedRecipients.map(({ profile }) => sanitizePublicProfile(profile));
+  // recipientStatuses embeds the profiles, so profiles aren't stored twice.
+  const recipientStatuses = buildRecipientStatuses(recipientProfiles);
+  const items: SharedContent[] = contents.map((content, index) => ({
+    id: `${base}-${index}-${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}`,
     ...content,
-    sender: normalizeUsername(user.username),
+    sender,
     senderUid: user.uid,
     timestamp,
     recipients,
-    recipientProfiles,
-    recipientStatuses: recipientProfiles.map((profile) => ({ ...profile, status: "unseen" })),
+    recipientStatuses,
     status: "unseen",
     likedBy: [],
-  };
+  }));
+  // Bound the commit size (links x recipients), not just each dimension.
+  if (items.length * resolvedRecipients.length > 2000) {
+    throw new Error("Too much at once — split into smaller shares");
+  }
 
   const userRef = doc(db, "users", user.uid);
   const recentShareRecipientUsernames = [
     ...recipients,
     ...(user.recentShareRecipientUsernames || []).filter((username) => !recipients.includes(username)),
   ];
-  await updateDoc(userRef, { sharedLinks: arrayUnion(item), lastSharedAt: Date.now(), recentShareRecipientUsernames });
-  for (const { ref } of resolvedRecipients) {
-    await updateDoc(ref, { receivedLinks: arrayUnion(item) });
-  }
+  const lastSharedAt = Date.now();
 
-  await updateLocalUser(user, {
-    sharedLinks: [...(user.sharedLinks || []), item],
-    lastSharedAt: Date.now(),
-    recentShareRecipientUsernames,
+  // Optimistic local update first so the feed is instant; reverted on failure.
+  await chrome.storage.local.set({
+    user: { ...user, sharedLinks: [...(user.sharedLinks || []), ...items], lastSharedAt, recentShareRecipientUsernames },
+    lastAnimatedShareId: items[items.length - 1].id,
   });
-  await chrome.storage.local.set({ lastAnimatedShareId: id });
-  chrome.runtime.sendMessage({ type: "SHARE_LINK_SUCCESS", item });
-  return item;
+
+  // Single atomic commit: sender + every recipient, or nothing. The old
+  // sender-first + per-recipient writes left phantom "sent" copies whenever
+  // any recipient write failed (the flaky text-send bug), and cost N+1
+  // round trips. set-with-merge tolerates a missing recipient doc.
+  const batch = writeBatch(db);
+  batch.update(userRef, { sharedLinks: arrayUnion(...items), lastSharedAt, recentShareRecipientUsernames });
+  for (const { ref } of resolvedRecipients) {
+    batch.set(ref, { receivedLinks: arrayUnion(...items) }, { merge: true });
+  }
+  try {
+    await batch.commit();
+  } catch (error) {
+    // Surgical revert: remove only our item ids from the latest local copy
+    // instead of restoring a stale snapshot over concurrent updates.
+    try {
+      const latest = await chrome.storage.local.get(["user"]);
+      const ids = new Set(items.map((item) => item.id));
+      if (latest.user) {
+        await chrome.storage.local.set({
+          user: {
+            ...latest.user,
+            sharedLinks: (latest.user.sharedLinks || []).filter((link: SharedContent) => !ids.has(link.id)),
+          },
+        });
+      }
+      await chrome.storage.local.remove("lastAnimatedShareId");
+    } catch {
+      // Revert is best-effort; the next sync reconciles local state anyway.
+    }
+    throw friendlyShareError(error);
+  }
+  return items[items.length - 1];
 }
 
-export async function updateLinkStatus(
+/** Map low-level commit failures to copy the share sheet can show. */
+function friendlyShareError(error: unknown): Error {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/permission-denied|insufficient permissions/i.test(message)) {
+    return new Error("Couldn't deliver — check your connection and try again");
+  }
+  if (/resource-exhausted|quota|exceed|too large|too big|maximum/i.test(message)) {
+    return new Error("That share is too large to deliver — try fewer links or recipients");
+  }
+  return error instanceof Error ? error : new Error("Failed to share");
+}
+
+export function updateLinkStatus(
   linkId: string,
   status: ContentStatus,
   senderUsername?: string,
+  senderUid?: string,
+) {
+  return serializeStatusWrite(() => updateLinkStatusInner(linkId, status, senderUsername, senderUid));
+}
+
+async function updateLinkStatusInner(
+  linkId: string,
+  status: ContentStatus,
+  senderUsername?: string,
+  senderUid?: string,
 ) {
   const user = await getStoredUser();
   const now = new Date().toISOString();
   const profile = profileFromUser(user);
   const userRef = doc(db, "users", user.uid);
   const userSnap = await getDoc(userRef);
-  const receivedLinks = ((userSnap.data()?.receivedLinks || []) as SharedContent[]).map((item) =>
+  const storedReceived = ((userSnap.data()?.receivedLinks || []) as SharedContent[]);
+  const receivedItem = storedReceived.find((item) => item.id === linkId);
+  const receivedLinks = storedReceived.map((item) =>
     item.id === linkId ? { ...item, status } : item,
   );
   await updateDoc(userRef, { receivedLinks });
   await updateLocalUser(user, { receivedLinks });
 
-  const sender = await resolveProfile(user, senderUsername || "");
-  if (!sender) return;
-  const senderSnap = await getDoc(sender.ref);
+  // Resolve the sender by stable uid first: usernames can change after a
+  // link is shared, which used to make this lookup silently miss and leave
+  // the sender's recipient sheet stuck on "Not seen" forever.
+  const uidFromParam = typeof senderUid === "string" ? senderUid.trim() : "";
+  const uidFromItem = typeof receivedItem?.senderUid === "string" ? receivedItem.senderUid.trim() : "";
+  const senderUidResolved = uidFromParam || uidFromItem;
+  let senderRef = senderUidResolved ? doc(db, "users", senderUidResolved) : null;
+  if (!senderRef) {
+    const sender = await resolveProfile(user, senderUsername || receivedItem?.sender || "");
+    if (!sender) return;
+    senderRef = sender.ref;
+  }
+  const senderSnap = await getDoc(senderRef);
+  if (!senderSnap.exists()) return;
   const sharedLinks = ((senderSnap.data()?.sharedLinks || []) as SharedContent[]).map((item) =>
     item.id === linkId
-      ? { ...item, recipientStatuses: updateRecipientStatus(item.recipientStatuses, profile, status, now) }
+      ? { ...item, recipientStatuses: updateRecipientStatus(ensureRecipientStatuses(item), profile, status, now) }
       : item,
   );
-  await updateDoc(sender.ref, { sharedLinks });
+  await updateDoc(senderRef, { sharedLinks });
 }
 
 export function handleUpdateLinkStatusMessage(message: any, sendResponse: (response: Response) => void) {
-  updateLinkStatus(message.linkId, message.status, message.senderUsername)
+  updateLinkStatus(message.linkId, message.status, message.senderUsername, message.senderUid)
     .then(() => sendResponse({ success: true }))
     .catch((error) => sendResponse({ success: false, error: error instanceof Error ? error.message : "Status update failed" }));
 }
