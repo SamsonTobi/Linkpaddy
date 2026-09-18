@@ -391,6 +391,107 @@ const Dashboard: React.FC = () => {
     return uniqueFriends.filter((f) => !f.status || f.status === "accepted" || f.status === "auto");
   }, [uniqueFriends]);
 
+  // The recents row is the full friends list, reordered so the most
+  // recently shared-with friends come first. Always rendered (when there
+  // are friends), whether or not any recency data exists yet.
+  const recentRecipients = useMemo(() => {
+    const recency = new Map(
+      (currentUser?.recentShareRecipientUsernames || []).map((username, index) => [
+        String(username || "").toLowerCase(),
+        index,
+      ]),
+    );
+    return [...acceptedFriends]
+      .sort((a, b) => {
+        const ai = recency.get((a.username || "").toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+        const bi = recency.get((b.username || "").toLowerCase()) ?? Number.MAX_SAFE_INTEGER;
+        if (ai !== bi) return ai - bi;
+        return (a.username || "").localeCompare(b.username || "");
+      })
+      .map((friend) => ({
+        uid: friend.uid,
+        username: (friend.username || "").toLowerCase(),
+        displayName: friend.displayName || friend.username,
+        photoURL: friend.photoURL || "",
+      }))
+      .filter((person) => person.username);
+  }, [acceptedFriends, currentUser?.recentShareRecipientUsernames]);
+
+  // Quick-share from recents: tap = share clipboard/active-tab link to them,
+  // press-and-hold = multi-select friends to share with.
+  const LONG_PRESS_MS = 500;
+  const [selectedRecentUsernames, setSelectedRecentUsernames] = useState<string[]>([]);
+  const pressTimer = React.useRef<number | null>(null);
+  const suppressNextClick = React.useRef(false);
+
+  const clearPressTimer = () => {
+    if (pressTimer.current !== null) {
+      window.clearTimeout(pressTimer.current);
+      pressTimer.current = null;
+    }
+  };
+
+  const toggleRecentSelection = (username: string) => {
+    setSelectedRecentUsernames((prev) =>
+      prev.includes(username) ? prev.filter((name) => name !== username) : [...prev, username],
+    );
+  };
+
+  const startRecentPress = (username: string) => {
+    suppressNextClick.current = false;
+    // Coalesce touch + emulated-mouse double-firing: a second press starting
+    // while one is already pending must not arm a second toggle.
+    if (pressTimer.current !== null) return;
+    pressTimer.current = window.setTimeout(() => {
+      suppressNextClick.current = true;
+      pressTimer.current = null;
+      toggleRecentSelection(username);
+    }, LONG_PRESS_MS);
+  };
+
+  // Prefer the clipboard link, fall back to the active tab URL.
+  const resolveQuickShareLink = async (): Promise<string> => {
+    try {
+      const clipText = ((await navigator.clipboard.readText()) || "").trim();
+      if (/^https?:\/\//i.test(clipText)) return clipText;
+    } catch {
+      // Clipboard unavailable — try the active tab instead.
+    }
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      if (tab?.url && /^https?:\/\//i.test(tab.url)) return tab.url;
+    } catch {
+      // Tab lookup unavailable — the sheet still opens for manual entry.
+    }
+    return "";
+  };
+
+  const launchQuickShare = async (username: string) => {
+    const link = await resolveQuickShareLink();
+    setSelectedRecentUsernames([]);
+    setSharePrefill({ initialLink: link, skipToFriends: true, initialSelectedUsernames: [username] });
+    setShowShareLink(true);
+  };
+
+  const handleRecentClick = (username: string) => {
+    if (suppressNextClick.current) {
+      suppressNextClick.current = false;
+      return;
+    }
+    if (selectedRecentUsernames.length > 0) {
+      toggleRecentSelection(username);
+      return;
+    }
+    void launchQuickShare(username);
+  };
+
+  const handleRecentShareSelected = async () => {
+    const link = await resolveQuickShareLink();
+    setSharePrefill({ initialLink: link, skipToFriends: true, initialSelectedUsernames: selectedRecentUsernames });
+    setSelectedRecentUsernames([]);
+    setShowShareLink(true);
+  };
+
   const pendingReceivedRequests = useMemo(() => {
     const byUsername = new Map<string, (typeof uniqueFriends)[number]>();
 
@@ -837,6 +938,72 @@ const Dashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {activeTab === "links" && recentRecipients.length > 0 && (
+        <div className="shrink-0 border-b pb-3 pl-4 pt-2">
+          <div className="no-scrollbar flex gap-4 overflow-x-auto py-2 pl-1">
+            {recentRecipients.map((person) => {
+              const selected = selectedRecentUsernames.includes(person.username);
+              return (
+                <button
+                  key={person.username}
+                  type="button"
+                  onClick={() => handleRecentClick(person.username)}
+                  onMouseDown={() => startRecentPress(person.username)}
+                  onMouseUp={clearPressTimer}
+                  onMouseLeave={clearPressTimer}
+                  onTouchStart={() => startRecentPress(person.username)}
+                  onTouchEnd={clearPressTimer}
+                  onTouchMove={clearPressTimer}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onKeyDown={(event) => {
+                    // Keyboard equivalent of press-and-hold.
+                    if (event.shiftKey && (event.key === "Enter" || event.key === " ")) {
+                      event.preventDefault();
+                      toggleRecentSelection(person.username);
+                    }
+                  }}
+                  title={selected ? "Tap to deselect" : "Tap to share • hold or Shift+Enter to select"}
+                  className="flex w-16 shrink-0 flex-col items-center gap-1.5 transition-transform duration-150 hover:scale-105 active:scale-90"
+                >
+                  <img
+                    src={person.photoURL || "/default-avatar.png"}
+                    alt=""
+                    draggable={false}
+                    className={`h-14 w-14 rounded-full object-cover ${selected ? "ring-2 ring-[#6C5CE7] ring-offset-2" : ""}`}
+                  />
+                  <span className="w-full truncate text-center text-xs text-gray-600 outfit-normal">
+                    @{person.username}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {selectedRecentUsernames.length > 0 && (
+            <div className="flex items-center justify-between py-1 pl-1 pr-4">
+              <span className="text-xs font-medium text-gray-600 outfit-medium">
+                {selectedRecentUsernames.length} selected
+              </span>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRecentUsernames([])}
+                  className="rounded-full px-3 py-2 text-xs font-medium text-gray-500 hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRecentShareSelected}
+                  className="rounded-full bg-[#6C5CE7] px-6 py-2.5 text-sm font-semibold text-white transition-transform hover:scale-105 active:scale-95"
+                >
+                  Share
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={`shrink-0 overflow-hidden transition-all duration-300 ease-out ${showNavigation ? "max-h-24 translate-y-0 opacity-100" : "max-h-0 -translate-y-full opacity-0"}`}>
       <div className="flex gap-2 p-4 justify-between items-center">
