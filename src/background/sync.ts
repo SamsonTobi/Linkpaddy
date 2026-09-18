@@ -464,10 +464,15 @@ async function runLinksSync() {
     return !link.kind || (link.kind !== "friend_added" && !link.kind.startsWith("friend_request_") && link.kind !== "friend_removed");
   });
 
-  const signalsWereRemoved = normalizedReceivedLinks.length !== newReceivedLinks.length;
+  // Cap history so every read/write stays constant-time and docs stay far
+  // from the 1MB Firestore limit (arrays are append-ordered, oldest first).
+  const trimmedReceivedLinks = trimNewest(normalizedReceivedLinks, MAX_STORED_RECEIVED_LINKS);
+  const receivedTrimmed = trimmedReceivedLinks.length !== normalizedReceivedLinks.length;
+
+  const signalsWereRemoved = receivedTrimmed || normalizedReceivedLinks.length !== newReceivedLinks.length;
 
   if (signalsWereRemoved) {
-    await updateDoc(userRef, { receivedLinks: normalizedReceivedLinks });
+    await updateDoc(userRef, { receivedLinks: trimmedReceivedLinks });
   }
 
   const latestResult = await chrome.storage.local.get(["user"]);
@@ -477,10 +482,25 @@ async function runLinksSync() {
       ? false
       : !!(userData.isNewUser ?? latestUser.isNewUser);
 
+  const backfilledSharedLinks = await backfillSharedRecipientStatuses(
+    userRef,
+    (userData.sharedLinks || []) as SharedLink[],
+  );
+  const sharedLinks = trimNewest(backfilledSharedLinks, MAX_STORED_SHARED_LINKS);
+  if (sharedLinks.length !== backfilledSharedLinks.length) {
+    await updateDoc(userRef, { sharedLinks });
+  }
+
+  // Heal sender sheets stuck on "Not seen" for links already viewed here.
+  // Best-effort and throttled; never blocks the local sync.
+  void maybePushSeenStatusesToSenders(latestUser, trimmedReceivedLinks).catch((error) => {
+    console.warn("Seen-status heal failed:", error);
+  });
+
   const updatedUser = {
     ...latestUser,
-    receivedLinks: normalizedReceivedLinks,
-    sharedLinks: userData.sharedLinks || [],
+    receivedLinks: trimmedReceivedLinks,
+    sharedLinks,
     friends: currentFriends,
     isNewUser,
     activityNotifications: userData.activityNotifications || [],
