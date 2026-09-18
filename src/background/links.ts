@@ -78,23 +78,39 @@ async function updateLocalUser(user: StoredUser, patch: Partial<StoredUser>) {
   await chrome.storage.local.set({ user: { ...user, ...patch } });
 }
 
+// Serializes full-array doc rewrites so concurrent updates can't clobber
+// each other (last-writer-wins on the same array drops entries). One chain
+// per process is enough: these ops are infrequent and never nest inside
+// each other, which also rules out deadlocks by construction.
+let statusChain: Promise<void> = Promise.resolve();
+export function serializeStatusWrite<T>(task: () => Promise<T>): Promise<T> {
+  const run = statusChain.then(task);
+  statusChain = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
+
 async function updateRecipientCopies(
   owner: StoredUser,
   recipients: string[],
   transform: (item: SharedContent) => SharedContent | null,
 ) {
-  for (const username of recipients) {
-    const resolved = await resolveProfile(owner, username);
-    if (!resolved) continue;
-    const snapshot = await getDoc(resolved.ref);
-    if (!snapshot.exists()) continue;
-    const links = (snapshot.data().receivedLinks || []) as SharedContent[];
-    const next = links.flatMap((item) => {
-      const result = transform(item);
-      return result ? [result] : [];
-    });
-    await updateDoc(resolved.ref, { receivedLinks: next });
-  }
+  await Promise.all(
+    recipients.map(async (username) => {
+      const resolved = await resolveProfile(owner, username);
+      if (!resolved) return;
+      const snapshot = await getDoc(resolved.ref);
+      if (!snapshot.exists()) return;
+      const links = (snapshot.data().receivedLinks || []) as SharedContent[];
+      const next = links.flatMap((item) => {
+        const result = transform(item);
+        return result ? [result] : [];
+      });
+      await updateDoc(resolved.ref, { receivedLinks: next });
+    }),
+  );
 }
 
 export async function shareLink(link: string, selectedFriends: string[]) {
