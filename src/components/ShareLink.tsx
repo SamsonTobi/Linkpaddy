@@ -10,6 +10,8 @@ import {
   MagnifyingGlass,
   UserPlus,
   Plus,
+  Info,
+  Check,
 } from "@phosphor-icons/react";
 import CustomButton from "./ui/CustomButton";
 import AddFriend from "./AddFriend";
@@ -18,6 +20,7 @@ interface ShareLinkProps {
   onBack: () => void;
   initialLink?: string;
   skipToFriends?: boolean;
+  initialSelectedUsernames?: string[];
 }
 
 interface FriendEntry {
@@ -32,6 +35,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
   onBack,
   initialLink = "",
   skipToFriends = false,
+  initialSelectedUsernames,
 }) => {
   const { currentUser, shareLink, shareText } = useAuth();
   const [contentType, setContentType] = useState<"link" | "text">("link");
@@ -102,6 +106,17 @@ const ShareLink: React.FC<ShareLinkProps> = ({
       return prevKeys.filter((key) => validKeys.has(key));
     });
   }, [uniqueFriends]);
+
+  // Pre-check friends handed in by the caller (e.g. quick-share from recents).
+  useEffect(() => {
+    if (!initialSelectedUsernames || initialSelectedUsernames.length === 0) return;
+    const wanted = new Set(
+      initialSelectedUsernames.map((name) => String(name || "").trim().replace(/^@/, "").toLowerCase()),
+    );
+    setSelectedFriendKeys(uniqueFriends.filter((friend) => wanted.has(friend.username)).map((friend) => friend.key));
+    // Run once on mount; the sheet unmounts on close so this never goes stale.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const checkClipboard = async () => {
