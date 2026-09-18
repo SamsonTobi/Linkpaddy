@@ -513,6 +513,35 @@ export async function updateUsernameInternal(uid: string, nextUsername: string) 
 
           let needsUpdate = false;
 
+          // Refresh denormalized profile copies keyed by uid (usernames are
+          // mutable; uid is stable). Without this, recipient sheets keep the
+          // old username and the next view appends a ghost duplicate entry.
+          const refreshProfiles = (entries: any) => {
+            if (!Array.isArray(entries)) return entries;
+            let changed = false;
+            const next = entries.map((person: any) => {
+              const personUid = typeof person?.uid === "string" ? person.uid.trim() : "";
+              if (personUid !== uid || normalizeUsername(person?.username) === nextUsername) return person;
+              changed = true;
+              return {
+                ...person,
+                username: nextUsername,
+                displayName: latestDisplayName || person.displayName || "",
+                photoURL: latestPhotoURL || person.photoURL || "",
+              };
+            });
+            if (!changed) return entries;
+            needsUpdate = true;
+            return next;
+          };
+
+          const refreshLinkProfiles = (link: any) => {
+            const nextStatuses = refreshProfiles(link.recipientStatuses);
+            const nextProfiles = refreshProfiles(link.recipientProfiles);
+            if (nextStatuses === link.recipientStatuses && nextProfiles === link.recipientProfiles) return link;
+            return { ...link, recipientStatuses: nextStatuses, recipientProfiles: nextProfiles };
+          };
+
           const nextFriends = rawFriends.map((f: any) => {
             const fUid = typeof f.uid === "string" ? f.uid.trim() : "";
             if (fUid !== uid) return f;
@@ -526,23 +555,25 @@ export async function updateUsernameInternal(uid: string, nextUsername: string) 
           });
 
           const nextReceived = rawReceived.map((link: any) => {
-            if (typeof link.sender === "string" && normalizeUsername(link.sender) === oldUsername) {
+            const withProfiles = refreshLinkProfiles(link);
+            if (typeof withProfiles.sender === "string" && normalizeUsername(withProfiles.sender) === oldUsername) {
               needsUpdate = true;
-              return { ...link, sender: nextUsername };
+              return { ...withProfiles, sender: nextUsername };
             }
-            return link;
+            return withProfiles;
           });
 
           const nextShared = rawShared.map((link: any) => {
-            if (!Array.isArray(link.recipients)) return link;
-            const idx = link.recipients.findIndex(
+            const withProfiles = refreshLinkProfiles(link);
+            if (!Array.isArray(withProfiles.recipients)) return withProfiles;
+            const idx = withProfiles.recipients.findIndex(
               (r: string) => normalizeUsername(r) === oldUsername,
             );
-            if (idx < 0) return link;
+            if (idx < 0) return withProfiles;
             needsUpdate = true;
-            const newRecipients = [...link.recipients];
+            const newRecipients = [...withProfiles.recipients];
             newRecipients[idx] = nextUsername;
-            return { ...link, recipients: newRecipients };
+            return { ...withProfiles, recipients: newRecipients };
           });
 
           if (needsUpdate) {
