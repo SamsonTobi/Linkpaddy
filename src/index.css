@@ -102,3 +102,12 @@ label:active,
 @media (prefers-reduced-motion: reduce) {
   .animate-share-in { animation: none; }
 }
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
