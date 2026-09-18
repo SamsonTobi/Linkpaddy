@@ -50,27 +50,30 @@ async function trySilentReauth(): Promise<User | null> {
   }
 }
 
-let silentReauthAttempted = false;
+// Silent re-auth is throttled, not once-per-lifecycle: a failed attempt
+// during a network dead spot must not burn the only chance to recover.
+const SILENT_REAUTH_THROTTLE_MS = 2 * 60 * 1000;
+let lastSilentReauthAt = 0;
 
 export async function requireMatchingAuthUser(expectedUid?: string) {
   await waitForAuthReadyWithTimeout();
 
   let currentUser = auth.currentUser;
 
-  if (!currentUser && !silentReauthAttempted) {
-    silentReauthAttempted = true;
-    console.log("Firebase auth not ready — attempting silent re-auth...");
-    currentUser = await trySilentReauth();
+  if (!currentUser) {
+    const now = Date.now();
+    if (now - lastSilentReauthAt >= SILENT_REAUTH_THROTTLE_MS) {
+      lastSilentReauthAt = now;
+      console.log("Firebase auth not ready — attempting silent re-auth...");
+      currentUser = await trySilentReauth();
+    }
   }
 
   if (!currentUser) {
-    // Send a signal to the popup so it can show the login screen directly
-    try {
-      chrome.runtime.sendMessage({ type: "SIGN_OUT_FORCED" });
-    } catch (_) {
-      // Popup might not be open — ignore
-    }
-
+    // Transient (cold start after idle, slow restore, offline) — NOT a
+    // logout. Callers treat this as "try again later" and the popup keeps
+    // showing cached data. A forced login screen is only sent when the
+    // server confirms the account is gone (see sync).
     throw new BackgroundAuthNotReadyError(
       "Firebase auth is not ready. Please reopen the extension or sign in again.",
     );
@@ -83,9 +86,4 @@ export async function requireMatchingAuthUser(expectedUid?: string) {
   }
 
   return currentUser;
-}
-
-/** Resets the silent-reauth flag so it can be retried on the next service-worker lifecycle. */
-export function resetSilentReauthFlag() {
-  silentReauthAttempted = false;
 }
