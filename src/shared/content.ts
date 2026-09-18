@@ -43,6 +43,11 @@ export interface ReminderInput {
 
 export const TEXT_LIMIT = 1000;
 export const REMINDER_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000;
+/** Max links accepted in a single share (comma-separated input). */
+export const MAX_LINKS_PER_SHARE = 20;
+/** History caps: keeps every read/write constant-time and docs under the 1MB Firestore limit. */
+export const MAX_STORED_SHARED_LINKS = 500;
+export const MAX_STORED_RECEIVED_LINKS = 500;
 
 export function normalizeUsername(value: unknown): string {
   return typeof value === "string"
