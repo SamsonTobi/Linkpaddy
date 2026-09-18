@@ -100,6 +100,17 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     );
   }, [uniqueFriends, searchTerm]);
 
+  const shareLabel = (() => {
+    if (isSharing) return "Sharing...";
+    if (selectedFriendKeys.length === 1) {
+      const friend = uniqueFriends.find((f) => f.key === selectedFriendKeys[0]);
+      const firstName = friend?.displayName?.trim().split(/\s+/)[0] || friend?.username;
+      return firstName ? `Share to ${firstName}` : "Share";
+    }
+    if (selectedFriendKeys.length > 1) return `Share to all ${selectedFriendKeys.length}`;
+    return "Share";
+  })();
+
   useEffect(() => {
     setSelectedFriendKeys((prevKeys) => {
       const validKeys = new Set(uniqueFriends.map((friend) => friend.key));
@@ -170,7 +181,7 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     if (isSharing) return;
 
     setError(null);
-    if (contentType === "link" && !link) {
+    if (contentType === "link" && !link.trim()) {
       setError("Please enter a link");
       return;
     }
@@ -222,11 +233,23 @@ const ShareLink: React.FC<ShareLinkProps> = ({
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
-          <h2 className="text-xl font-semibold outfit-semibold">Share something</h2>
+          <h2 className="flex-1 text-xl font-semibold outfit-semibold">Share something</h2>
+        <CustomButton
+          type="submit"
+          form="share-form"
+          disabled={isSharing}
+          variant="primary"
+          size="md"
+          className="rounded-full px-5 outfit-semibold"
+          showArrow={false}
+          trailingIcon={<PaperPlaneTilt className="w-4 h-4" />}
+        >
+          {shareLabel}
+        </CustomButton>
       </div>
 
       <div className="px-4 pt-4 pb-6 flex-1 overflow-auto">
-        <form onSubmit={handleShare} className="space-y-4">
+        <form id="share-form" onSubmit={handleShare} className="space-y-4">
           <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
             <button type="button" onClick={() => setContentType("link")} className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${contentType === "link" ? "bg-white shadow-sm font-medium" : "text-gray-500"}`}><LinkSimple className="w-4 h-4" /> Link</button>
             <button type="button" onClick={() => setContentType("text")} className={`flex-1 flex items-center justify-center gap-2 rounded-lg py-2 text-sm ${contentType === "text" ? "bg-white shadow-sm font-medium" : "text-gray-500"}`}><TextT className="w-4 h-4" /> Text</button>
