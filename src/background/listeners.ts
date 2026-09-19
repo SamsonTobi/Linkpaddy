@@ -93,10 +93,11 @@ export function registerBackgroundListeners() {
       console.log("Popup opened, refreshing data...");
       triggerQuickSync("popupConnected", true);
 
-      // Keep refreshing while popup is open (every 5 seconds)
+      // Keep refreshing while popup is open. Polled loosely: every sync
+      // does full-doc server reads, and write bandwidth is precious.
       const intervalId = setInterval(() => {
         triggerQuickSync("popupPolling");
-      }, 5000);
+      }, 15000);
 
       port.onDisconnect.addListener(() => {
         console.log("Popup closed, stopping live refresh");

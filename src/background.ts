@@ -105,6 +105,13 @@ import { auth } from "./firebase";
 import { onAuthStateChanged } from "firebase/auth/web-extension";
 import { waitForAuthReadyWithTimeout } from "./background/authState";
 
+// Diagnostic hook: Firestore SDK internals can reject outside our try/catch
+// (e.g. rules denials on cross-user writes). Log them with context instead
+// of letting the worker die silently.
+(globalThis as any).addEventListener?.("unhandledrejection", (event: any) => {
+  console.error("Unhandled background rejection:", event?.reason);
+});
+
 // Pre-warm Firebase Auth when service worker boots so auth state is ready
 // before the first popup request arrives.
 onAuthStateChanged(auth, () => {
