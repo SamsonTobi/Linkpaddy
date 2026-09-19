@@ -182,6 +182,14 @@ const searchCache = new Map<string, { expiresAt: number; users: ExtendedUser[] }
 // must surface as an error, never leave the UI stuck forever.
 const BACKGROUND_RESPONSE_TIMEOUT_MS = 30000;
 
+// Firestore writes pend (never settle) while offline, so fail fast here
+// with an instant message instead of spinning up a doomed round trip.
+function throwIfOffline() {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error("You're offline — reconnect and try again");
+  }
+}
+
 function sendMessageWithTimeout<T>(message: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -554,6 +562,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const shareLink = async (link: string, selectedFriends: string[]) => {
     if (!currentUser) throw new Error("No user logged in");
+    throwIfOffline();
     try {
       const response = await sendMessageWithTimeout<{
         success: boolean;
@@ -573,6 +582,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const sendContent = async (content: { link?: string; text?: string; contentType: "link" | "text" }, selectedFriends: string[]) => {
+    throwIfOffline();
     const response = await sendMessageWithTimeout<{ success: boolean; error?: string }>(
       { type: "SHARE_CONTENT", ...content, selectedFriends },
     );

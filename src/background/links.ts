@@ -121,6 +121,12 @@ export async function shareContent(
   input: { link?: string; text?: string; contentType: "link" | "text" },
   selectedFriends: string[],
 ) {
+  // Fail fast while offline: Firestore write promises pend (never reject)
+  // without connectivity, which used to wedge the sheet on "Sharing..."
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    throw new Error("You're offline — reconnect and try again");
+  }
+
   const recipients = Array.from(new Set(selectedFriends.map(normalizeUsername).filter(Boolean)));
   if (recipients.length === 0) throw new Error("Please select at least one friend");
   if (recipients.length > 400) throw new Error("Too many recipients at once");
@@ -179,13 +185,23 @@ export async function shareContent(
   // sender-first + per-recipient writes left phantom "sent" copies whenever
   // any recipient write failed (the flaky text-send bug), and cost N+1
   // round trips. set-with-merge tolerates a missing recipient doc.
+  // The commit is raced against a timeout because Firestore pends (never
+  // settles) when the backend is unreachable or throttling writes — without
+  // this the share hangs forever. Kept under the popup's 30s timeout so the
+  // specific error below wins over the generic one.
+  const COMMIT_TIMEOUT_MS = 25000;
   const batch = writeBatch(db);
   batch.update(userRef, { sharedLinks: arrayUnion(...items), lastSharedAt, recentShareRecipientUsernames });
   for (const { ref } of resolvedRecipients) {
     batch.set(ref, { receivedLinks: arrayUnion(...items) }, { merge: true });
   }
   try {
-    await batch.commit();
+    await Promise.race([
+      batch.commit(),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("COMMIT_TIMEOUT")), COMMIT_TIMEOUT_MS),
+      ),
+    ]);
   } catch (error) {
     // Surgical revert: remove only our item ids from the latest local copy
     // instead of restoring a stale snapshot over concurrent updates.
@@ -204,6 +220,13 @@ export async function shareContent(
     } catch {
       // Revert is best-effort; the next sync reconciles local state anyway.
     }
+    if (error instanceof Error && error.message === "COMMIT_TIMEOUT") {
+      throw new Error(
+        typeof navigator !== "undefined" && navigator.onLine === false
+          ? "You're offline — reconnect and try again"
+          : "Couldn't reach LinkPaddy servers — try again in a bit",
+      );
+    }
     throw friendlyShareError(error);
   }
   return items[items.length - 1];
@@ -213,9 +236,12 @@ export async function shareContent(
 function friendlyShareError(error: unknown): Error {
   const message = error instanceof Error ? error.message : String(error);
   if (/permission-denied|insufficient permissions/i.test(message)) {
-    return new Error("Couldn't deliver — check your connection and try again");
+    return new Error("Couldn't deliver — please try again");
   }
-  if (/resource-exhausted|quota|exceed|too large|too big|maximum/i.test(message)) {
+  if (/resource-exhausted|quota|bandwidth|queued writes/i.test(message)) {
+    return new Error("LinkPaddy servers are busy right now — try again in a bit");
+  }
+  if (/too large|too big/i.test(message)) {
     return new Error("That share is too large to deliver — try fewer links or recipients");
   }
   return error instanceof Error ? error : new Error("Failed to share");
