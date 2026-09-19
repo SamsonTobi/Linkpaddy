@@ -178,6 +178,26 @@ function dedupeFriendsByIdentity(
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const searchCache = new Map<string, { expiresAt: number; users: ExtendedUser[] }>();
 
+// Upper bound for background round trips. A hung service worker operation
+// must surface as an error, never leave the UI stuck forever.
+const BACKGROUND_RESPONSE_TIMEOUT_MS = 30000;
+
+function sendMessageWithTimeout<T>(message: unknown): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error("Taking too long — please check your connection and try again"));
+    }, BACKGROUND_RESPONSE_TIMEOUT_MS);
+    chrome.runtime.sendMessage(message, (response) => {
+      clearTimeout(timer);
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response as T);
+      }
+    });
+  });
+}
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -535,26 +555,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const shareLink = async (link: string, selectedFriends: string[]) => {
     if (!currentUser) throw new Error("No user logged in");
     try {
-      const response = await new Promise<{
+      const response = await sendMessageWithTimeout<{
         success: boolean;
         error?: string;
-      }>((resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { type: "SHARE_LINK", link, selectedFriends },
-          (messageResponse) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else if (!messageResponse) {
-              reject(new Error("No response from background script"));
-            } else {
-              resolve(messageResponse);
-            }
-          },
-        );
-      });
+      }>({ type: "SHARE_LINK", link, selectedFriends });
 
-      if (!response.success) {
-        throw new Error(response.error || "Failed to share link");
+      if (!response || !response.success) {
+        throw new Error(response?.error || "Failed to share link");
       }
     } catch (error) {
       console.error("Error sharing link:", error);
@@ -566,12 +573,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const sendContent = async (content: { link?: string; text?: string; contentType: "link" | "text" }, selectedFriends: string[]) => {
-    const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
-      chrome.runtime.sendMessage({ type: "SHARE_CONTENT", ...content, selectedFriends }, (res) => {
-        if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-        else resolve(res);
-      });
-    });
+    const response = await sendMessageWithTimeout<{ success: boolean; error?: string }>(
+      { type: "SHARE_CONTENT", ...content, selectedFriends },
+    );
     if (!response?.success) throw new Error(response?.error || "Failed to share");
   };
 
