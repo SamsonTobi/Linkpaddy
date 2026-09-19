@@ -37,6 +37,15 @@ if (typeof globalThis.XMLHttpRequest === "undefined") {
       if (this.controller) {
         this.controller.abort();
       }
+      // An aborted request must still terminate from the SDK's perspective.
+      // Previously nothing fired here, so Firestore (long-polling, which
+      // aborts requests routinely) waited forever: reads and writes never
+      // settled and shares sat stuck on "Sharing..." indefinitely.
+      if (this.readyState !== 4) {
+        this.readyState = 4; // DONE
+        this.status = 0;
+        if (this.onreadystatechange) this.onreadystatechange();
+      }
     }
 
     send(body: any) {
@@ -53,7 +62,7 @@ if (typeof globalThis.XMLHttpRequest === "undefined") {
       let timeoutId: any = null;
       if (this.timeout > 0) {
         timeoutId = setTimeout(() => {
-          this.abort();
+          this.abort(); // signals termination (readyState + handler) first
           if (this.ontimeout) this.ontimeout();
           if (this.onloadend) this.onloadend();
         }, this.timeout);
