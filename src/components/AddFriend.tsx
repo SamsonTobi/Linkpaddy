@@ -57,6 +57,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
   const [addingKey, setAddingKey] = useState<string | null>(null);
   const [welcomeCardDismissed, setWelcomeCardDismissed] = useState(false);
   const searchSequence = useRef(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const autoFriends = useMemo(() => {
     return (currentUser?.friends || []).filter((f) => f.status === "auto");
@@ -120,7 +121,11 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isSearching || addingKey) return;
+    if (addingKey) return;
+
+    // Cancel any pending debounced auto-search so it doesn't overwrite this result
+    searchSequence.current += 1;
+    const sequence = searchSequence.current;
 
     setError(null);
     setSearchResults(null);
@@ -135,6 +140,7 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
     try {
       const users = await searchUser(trimmedSearchTerm);
 
+      if (sequence !== searchSequence.current) return;
       if (users.length > 0) {
         setSearchResults(
           users.map((u) => ({
@@ -147,9 +153,14 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
         setSearchResults([]);
       }
     } catch {
-      setError("An error occurred while searching");
+      if (sequence === searchSequence.current)
+        setError("An error occurred while searching");
     } finally {
-      setIsSearching(false);
+      if (sequence === searchSequence.current) {
+        setIsSearching(false);
+        // Keep focus in the input so the user can keep typing / press enter again
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
     }
   };
 
@@ -201,19 +212,19 @@ const AddFriend: React.FC<AddFriendProps> = ({ onBack }) => {
           <div className="flex items-center px-4 border border-gray-200 rounded-xl focus-within:ring-2 focus-within:ring-[#6C5CE7]">
             <MagnifyingGlass className="w-5 h-5 mr-3 text-gray-400" />
             <input
+              ref={inputRef}
               type="text"
               value={searchTerm}
               onChange={handleSearchInputChange}
               autoFocus
               placeholder="Enter email/username to find friends or send invites"
               className="w-full bg-white py-4 outfit-normal focus:outline-none placeholder:text-gray-400"
-              disabled={isSearching || !!addingKey}
             />
             {searchTerm.trim().length >= 2 && (
               <button
                 type="submit"
-                disabled={isSearching || !!addingKey}
-                className="p-2 hover:bg-gray-100 rounded-full shrink-0"
+                disabled={!!addingKey}
+                className="p-2 hover:bg-gray-100 rounded-full shrink-0 disabled:opacity-50"
               >
                 <ArrowElbowDownLeft className="w-5 h-5 text-[#6C5CE7]" />
               </button>

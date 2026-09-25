@@ -19,6 +19,8 @@ import AddFriend from "./AddFriend";
 interface ShareLinkProps {
   onBack: () => void;
   initialLink?: string;
+  initialText?: string;
+  initialContentType?: "link" | "text";
   skipToFriends?: boolean;
   initialSelectedUsernames?: string[];
 }
@@ -34,15 +36,19 @@ interface FriendEntry {
 const ShareLink: React.FC<ShareLinkProps> = ({
   onBack,
   initialLink = "",
+  initialText = "",
+  initialContentType,
   skipToFriends = false,
   initialSelectedUsernames,
 }) => {
   const { currentUser, shareLink, shareText } = useAuth();
-  const [contentType, setContentType] = useState<"link" | "text">("link");
-  const [text, setText] = useState("");
+  const [contentType, setContentType] = useState<"link" | "text">(
+    initialContentType ?? (initialText ? "text" : "link"),
+  );
+  const [text, setText] = useState(initialText);
   const [link, setLink] = useState(initialLink);
   const [showFriendsList, setShowFriendsList] = useState(
-    skipToFriends && !!initialLink,
+    skipToFriends && (!!initialLink || !!initialText),
   );
   const [selectedFriendKeys, setSelectedFriendKeys] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -111,6 +117,18 @@ const ShareLink: React.FC<ShareLinkProps> = ({
     return "Share";
   })();
 
+  const hasShareableContent =
+    contentType === "text" ? text.trim().length > 0 : link.trim().length > 0;
+  const canShare =
+    hasShareableContent && selectedFriendKeys.length > 0 && !isSharing;
+  const shareDisabledReason = isSharing
+    ? "Sharing..."
+    : !hasShareableContent
+      ? contentType === "text"
+        ? "Write something to share first"
+        : "Paste a link to share first"
+      : "Select at least one friend";
+
   useEffect(() => {
     setSelectedFriendKeys((prevKeys) => {
       const validKeys = new Set(uniqueFriends.map((friend) => friend.key));
@@ -156,11 +174,11 @@ const ShareLink: React.FC<ShareLinkProps> = ({
       }
     };
 
-    if (!initialLink) {
+    if (!initialLink && !initialText) {
       checkClipboard();
       getCurrentTab();
     }
-  }, [initialLink]);
+  }, [initialLink, initialText]);
 
   // Auto-open the friend list when a link is entered
   useEffect(() => {
@@ -237,7 +255,8 @@ const ShareLink: React.FC<ShareLinkProps> = ({
         <CustomButton
           type="submit"
           form="share-form"
-          disabled={isSharing}
+          disabled={!canShare}
+          title={canShare ? undefined : shareDisabledReason}
           variant="primary"
           size="md"
           className="rounded-full px-5 outfit-semibold"

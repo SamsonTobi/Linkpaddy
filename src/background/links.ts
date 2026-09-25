@@ -392,4 +392,36 @@ export async function deleteContent(linkId: string) {
   await updateDoc(doc(db, "users", user.uid), { sharedLinks });
   await updateRecipientCopies(user, item.recipients || [], (candidate) => candidate.id === linkId ? null : candidate);
   await updateLocalUser(user, { sharedLinks });
+  await addContentTombstone(linkId);
+}
+
+/**
+ * Delete a received item from this user's list only. The sender's copy
+ * and every other recipient's copy are left untouched.
+ */
+export async function deleteReceivedContent(linkId: string) {
+  const user = await getStoredUser();
+  const userRef = doc(db, "users", user.uid);
+  // Read the server copy so a concurrent arrival isn't dropped by a stale
+  // local snapshot; received items always originate server-side.
+  const snap = await getDoc(userRef);
+  if (!snap.exists()) throw new Error("Account not found");
+  const receivedLinks = ((snap.data()?.receivedLinks || []) as SharedContent[]).filter(
+    (item) => item.id !== linkId,
+  );
+  await updateDoc(userRef, { receivedLinks });
+  await updateLocalUser(user, { receivedLinks });
+  await addContentTombstone(linkId);
+}
+
+/**
+ * Remember a locally deleted item id so a background sync that read the
+ * server before the delete landed can't resurrect it in local state (which
+ * made deletes look slow or broken until the following sync). Tombstones
+ * are pruned by the sync once the server no longer carries the id.
+ */
+async function addContentTombstone(linkId: string) {
+  const { deletedContentIds = [] } = await chrome.storage.local.get(["deletedContentIds"]);
+  const next = Array.from(new Set([...(deletedContentIds as string[]), linkId])).slice(-500);
+  await chrome.storage.local.set({ deletedContentIds: next });
 }

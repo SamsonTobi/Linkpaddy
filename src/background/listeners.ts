@@ -3,7 +3,7 @@ import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInte
 import { checkForNewLinks, updateBadge } from "./sync";
 import { refreshFriendProfiles } from "./friendsSync";
 import { openExtensionUi } from "./ui";
-import { deleteContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
+import { deleteContent, deleteReceivedContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
 import { ensureSharingReminderAlarm, maybeShowSharingReminder, SHARING_REMINDER_ALARM } from "./reminders";
 
 const CHECK_NEW_LINKS_ALARM = "checkNewLinks";
@@ -193,6 +193,9 @@ export function registerBackgroundListeners() {
       return true;
     } else if (message.type === "DELETE_CONTENT") {
       deleteContent(message.linkId).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
+      return true;
+    } else if (message.type === "DELETE_RECEIVED_CONTENT") {
+      deleteReceivedContent(message.linkId).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
       return true;
     } else if (message.type === "REFRESH_DATA") {
       checkForNewLinks()

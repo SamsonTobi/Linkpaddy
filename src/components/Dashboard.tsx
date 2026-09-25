@@ -116,7 +116,7 @@ const openedLinkIcon = (
 );
 
 const Dashboard: React.FC = () => {
-  const { currentUser, updateLinkStatus, removeFriend, acceptFriend, rejectFriend, toggleLike, toggleBookmark, editText, deleteContent, addFriend, searchUser } = useAuth();
+  const { currentUser, updateLinkStatus, removeFriend, acceptFriend, rejectFriend, toggleLike, toggleBookmark, editText, deleteContent, deleteReceivedContent, addFriend, searchUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"links" | "friends">("links");
   const [linkFilter, setLinkFilter] = useState<"all" | "sent" | "received" | "saved">(
     "all",
@@ -124,6 +124,8 @@ const Dashboard: React.FC = () => {
   const [showShareLink, setShowShareLink] = useState(false);
   const [sharePrefill, setSharePrefill] = useState<{
     initialLink?: string;
+    initialText?: string;
+    initialContentType?: "link" | "text";
     skipToFriends?: boolean;
     initialSelectedUsernames?: string[];
   } | null>(null);
@@ -307,12 +309,26 @@ const Dashboard: React.FC = () => {
     return sortedLinks.filter((link) => link.type === "received");
   }, [sortedLinks, linkFilter, currentUser?.bookmarkedLinkIds]);
 
-  // Separate unseen received links
-  const unseenReceivedLinks = useMemo(() => {
-    return filteredLinks.filter(
-      (link) => link.type === "received" && link.status === "unseen",
-    );
-  }, [filteredLinks]);
+  // Separate unseen received links. Membership is session-stable: once a
+  // link has been shown in Unseen it stays there until the popup is
+  // reopened, and newly arrived unseen links join it. Without this, the
+  // optimistic seen-update and the background sync (which rewrites local
+  // state from a possibly stale server snapshot while the popup is open)
+  // flap link.status between unseen/seen, bouncing items between the Unseen
+  // section and the date-grouped sections — a continuous blink.
+  const stableUnseenIdsRef = React.useRef<Set<string>>(new Set());
+  const { unseenReceivedLinks, otherLinks } = useMemo(() => {
+    for (const link of sortedLinks) {
+      if (link.type === "received" && link.status === "unseen" && link.id) {
+        stableUnseenIdsRef.current.add(link.id);
+      }
+    }
+    const known = stableUnseenIdsRef.current;
+    return {
+      unseenReceivedLinks: filteredLinks.filter((link) => known.has(link.id)),
+      otherLinks: filteredLinks.filter((link) => !known.has(link.id)),
+    };
+  }, [sortedLinks, filteredLinks]);
 
   const getDateLabel = (timestamp: string) => {
     const now = new Date();
@@ -332,12 +348,6 @@ const Dashboard: React.FC = () => {
     if (months < 12) return `${months} months ago`;
     return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
   };
-
-  const otherLinks = useMemo(() => {
-    return filteredLinks.filter(
-      (link) => !(link.type === "received" && link.status === "unseen"),
-    );
-  }, [filteredLinks]);
 
   const groupedOtherLinks = useMemo(() => {
     const groups: { label: string; links: typeof otherLinks }[] = [];
@@ -646,12 +656,20 @@ const Dashboard: React.FC = () => {
   // Sequential, one message per link (with sender identity): the old code
   // fired two background messages per link in parallel, causing
   // read-modify-write races on the same Firestore docs that dropped
-  // updates and left senders stuck on "Not seen".
+  // updates and left senders stuck on "Not seen". Each link is reported
+  // once per session: the background sync rewrites local state from the
+  // server while the popup is open, which can temporarily resurrect an
+  // "unseen" status and must not re-fire the update (or flap the UI).
+  const reportedSeenIdsRef = React.useRef<Set<string>>(new Set());
   useEffect(() => {
     if (activeTab !== "links" || !currentUser) return;
 
     const unseenLinks = sortedLinks.filter(
-      (link) => link.type === "received" && link.status === "unseen",
+      (link) =>
+        link.type === "received" &&
+        link.status === "unseen" &&
+        link.id &&
+        !reportedSeenIdsRef.current.has(link.id),
     );
     if (unseenLinks.length === 0) return;
 
@@ -659,6 +677,7 @@ const Dashboard: React.FC = () => {
     (async () => {
       for (const link of unseenLinks) {
         if (cancelled) break;
+        reportedSeenIdsRef.current.add(link.id);
         try {
           await updateLinkStatus(link.id, "seen", link.sender, (link as any).senderUid);
         } catch (error) {
@@ -684,6 +703,8 @@ const Dashboard: React.FC = () => {
           setSharePrefill(null);
         }}
         initialLink={sharePrefill?.initialLink}
+        initialText={sharePrefill?.initialText}
+        initialContentType={sharePrefill?.initialContentType}
         skipToFriends={sharePrefill?.skipToFriends}
         initialSelectedUsernames={sharePrefill?.initialSelectedUsernames}
       />
@@ -785,7 +806,25 @@ const Dashboard: React.FC = () => {
 
   const removeItem = async (event: React.MouseEvent, link: any) => {
     event.stopPropagation();
+    setOpenMoreId(null);
+    if (link.type === "received") {
+      if (window.confirm("Remove this item from your list? It will stay for everyone else.")) {
+        await deleteReceivedContent(link.id);
+      }
+      return;
+    }
     if (window.confirm("Delete this item for everyone?")) await deleteContent(link.id);
+  };
+
+  const handleReshare = (event: React.MouseEvent, link: any) => {
+    event.stopPropagation();
+    setOpenMoreId(null);
+    if (link.contentType === "text") {
+      setSharePrefill({ initialText: link.text || "", initialContentType: "text", skipToFriends: true });
+    } else {
+      setSharePrefill({ initialLink: link.link || "", initialContentType: "link", skipToFriends: true });
+    }
+    setShowShareLink(true);
   };
 
   const isBookmarked = (linkId: string) => currentUser.bookmarkedLinkIds?.includes(linkId) || false;
@@ -860,18 +899,28 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const itemActions = (link: any, onPreview = false) => (
-    <div className={`relative flex items-center gap-0.5 rounded-full p-0.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity ${onPreview ? "bg-black/60 text-white backdrop-blur-sm" : "bg-gray-100 text-gray-600"}`}>
+  const itemActions = (link: any, onPreview = false) => {
+    // While the menu is open the pill must stay visible and interactive even
+    // if the cursor leaves the card: the dropdown hangs below the pill and
+    // often extends past the card bounds, so relying on group-hover alone
+    // makes the open menu (and its Delete option) vanish as you mouse down
+    // into it.
+    const menuOpen = openMoreId === link.id;
+    return (
+    <div className={`relative flex items-center gap-0.5 rounded-full p-0.5 transition-opacity ${menuOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto"} ${onPreview ? "bg-black/60 text-white backdrop-blur-sm" : "bg-gray-100 text-gray-600"}`}>
       {link.contentType !== "text" && <button title="Like" onClick={(event) => toggleItemLike(event, link)} className={`rounded-full p-1.5 hover:bg-white/20 ${(link.likedBy || []).includes(currentUser.username || "") ? "text-rose-400" : "text-current"}`}><Heart weight={(link.likedBy || []).includes(currentUser.username || "") ? "fill" : "regular"} className="h-[19px] w-[19px]" /></button>}
       <button title="More options" onClick={(event) => { event.stopPropagation(); setOpenMoreId(openMoreId === link.id ? null : link.id); }} className="rounded-full p-1.5 text-current hover:bg-white/20"><DotsThreeVertical className="h-[19px] w-[19px]" /></button>
       {openMoreId === link.id && <div className="absolute right-0 top-full z-30 mt-1 w-36 rounded-lg border border-gray-100 bg-white p-1 text-left text-gray-900 shadow-lg">
+        <button onClick={(event) => handleReshare(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><ShareNetwork className="h-3.5 w-3.5" /> Reshare</button>
         <button onClick={(event) => copyItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><Copy className="h-3.5 w-3.5" /> {link.contentType === "text" ? "Copy text" : "Copy link"}</button>
         {link.contentType !== "text" && <button onClick={(event) => toggleItemBookmark(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><BookmarkSimple className="h-3.5 w-3.5" /> {isBookmarked(link.id) ? "Unsave" : "Bookmark"}</button>}
         {link.type === "shared" && link.contentType === "text" && <button onClick={(event) => startEditing(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs hover:bg-gray-50"><PencilSimple className="h-3.5 w-3.5" /> Edit text</button>}
         {link.type === "shared" && <button onClick={(event) => removeItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs text-red-600 hover:bg-red-50"><Trash className="h-3.5 w-3.5" /> Delete</button>}
+        {link.type === "received" && <button onClick={(event) => removeItem(event, link)} className="flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-xs text-red-600 hover:bg-red-50"><Trash className="h-3.5 w-3.5" /> Delete for me</button>}
       </div>}
     </div>
-  );
+    );
+  };
 
   const resolveSenderLabel = (sender: string) => {
     const key = (sender || "").replace(/^@/, "").toLowerCase();
@@ -1075,12 +1124,12 @@ const Dashboard: React.FC = () => {
                         Unseen
                       </h3>
                     </div>
-                    {unseenReceivedLinks.map((link, index) => {
+                    {unseenReceivedLinks.map((link) => {
                       const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
                         <div
-                          key={`unseen-${link.type}-${index}`}
-                           className={`group bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors relative ${animatedShareId === link.id ? "animate-share-in" : ""}`}
+                          key={`unseen-${link.type}-${link.id}`}
+                           className={`group bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors relative ${animatedShareId === link.id ? "animate-share-in" : ""} ${openMoreId === link.id ? "z-10" : ""}`}
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Blue dot indicator */}
@@ -1195,12 +1244,12 @@ const Dashboard: React.FC = () => {
                         {group.label}
                       </h3>
                     </div>
-                    {group.links.map((link, index) => {
+                    {group.links.map((link) => {
                       const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
                         <div
-                          key={`${link.type}-${group.label}-${index}`}
-                          className={`group relative bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors mb-2 ${animatedShareId === link.id ? "animate-share-in" : ""}`}
+                          key={`${link.type}-${link.id}`}
+                          className={`group relative bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors mb-2 ${animatedShareId === link.id ? "animate-share-in" : ""} ${openMoreId === link.id ? "z-10" : ""}`}
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Link Preview Image */}

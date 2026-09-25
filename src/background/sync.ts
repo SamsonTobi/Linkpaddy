@@ -34,6 +34,24 @@ async function getUserSnapshot(userRef: ReturnType<typeof doc>) {
   }
 }
 
+/**
+ * Second server read before wiping the local session: a single missing
+ * snapshot could be a transient backend blip on a flaky connection.
+ * Fail-closed — any error (notably offline) means "not confirmed".
+ */
+async function serverConfirmsAccountGone(
+  userRef: ReturnType<typeof doc>,
+): Promise<boolean> {
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const recheck = await getDocFromServer(userRef);
+    return !recheck.exists();
+  } catch (error) {
+    console.warn("Account-gone recheck failed, keeping session:", error);
+    return false;
+  }
+}
+
 async function enrichLegacyRecipientData(
   currentUser: any,
   userRef: ReturnType<typeof doc>,
@@ -210,7 +228,18 @@ async function runLinksSync() {
   const { snap: userSnap, fromServer } = await getUserSnapshot(userRef);
 
   if (!userSnap.exists()) {
-    if (fromServer) {
+    // Destructive branch: only wipe the local session when the server
+    // *confirms* the account is gone — and confirm it twice, so a single
+    // anomalous snapshot on a flaky connection can't log the user out.
+    // Any failure (notably offline) keeps the session.
+    if (fromServer && (await serverConfirmsAccountGone(userRef))) {
+      // Record why before wiping, so a future report is explainable.
+      await chrome.storage.local.set({
+        lastForcedLogout: {
+          at: new Date().toISOString(),
+          reason: "server-confirms-account-gone",
+        },
+      });
       // The server confirms this account is gone (deleted elsewhere) —
       // the only case where dropping the local session is correct.
       // Offline cache misses must never log the user out.
@@ -226,12 +255,19 @@ async function runLinksSync() {
 
   const userData = userSnap.data();
   const oldReceivedLinks: SharedLink[] = result.user.receivedLinks || [];
+  // Ids the user deleted locally. A sync that read the server before a
+  // delete landed must not resurrect them (or re-notify for them) — they
+  // stay hidden until the server converges, then the tombstone is pruned.
+  const { deletedContentIds = [] } = await chrome.storage.local.get(["deletedContentIds"]);
+  const deletedIds = new Set(deletedContentIds as string[]);
   const enrichedReceived = await enrichLegacyRecipientData(
     result.user,
     userRef,
     (userData.receivedLinks || []) as SharedLink[],
   );
-  const newReceivedLinks: SharedLink[] = enrichedReceived.links;
+  const newReceivedLinks: SharedLink[] = enrichedReceived.links.filter(
+    (link) => !deletedIds.has(link.id),
+  );
   const oldFriends: Friend[] = result.user.friends || [];
   const newFriends: Friend[] = userData.friends || [];
   const oldNotificationIds = new Set((result.user.activityNotifications || []).map((notification: any) => notification.id));
@@ -495,24 +531,58 @@ async function runLinksSync() {
       ? false
       : !!(userData.isNewUser ?? latestUser.isNewUser);
 
+  // Never downgrade a locally viewed status: the popup marks links seen
+  // optimistically while this sync may have read a stale server snapshot
+  // (taken before the status write landed). Viewing is monotonic
+  // (unseen -> seen -> opened), so a local seen/opened always wins over a
+  // server unseen/seen. Without this merge every sync flaps the status
+  // back, and the feed blinks between Unseen and the date groups.
+  const statusRank = (status: unknown) =>
+    status === "opened" ? 2 : status === "seen" ? 1 : 0;
+  const localStatusById = new Map<string, SharedLink["status"]>();
+  for (const link of (latestUser.receivedLinks || []) as SharedLink[]) {
+    if (link?.id && (link.status === "seen" || link.status === "opened")) {
+      localStatusById.set(link.id, link.status);
+    }
+  }
+  const mergedReceivedLinks = trimmedReceivedLinks.map((link) => {
+    const localStatus = link?.id ? localStatusById.get(link.id) : undefined;
+    if (localStatus && statusRank(localStatus) > statusRank(link.status)) {
+      return { ...link, status: localStatus };
+    }
+    return link;
+  });
+
   const backfilledSharedLinks = await backfillSharedRecipientStatuses(
     userRef,
     (userData.sharedLinks || []) as SharedLink[],
   );
-  const sharedLinks = trimNewest(backfilledSharedLinks, MAX_STORED_SHARED_LINKS);
+  const visibleSharedLinks = backfilledSharedLinks.filter((link) => !deletedIds.has(link.id));
+  const sharedLinks = trimNewest(visibleSharedLinks, MAX_STORED_SHARED_LINKS);
   if (sharedLinks.length !== backfilledSharedLinks.length) {
     await updateDoc(userRef, { sharedLinks });
   }
 
+  // Tombstones whose ids no longer exist server-side have converged and can
+  // be dropped; the rest stay until the delete propagates to this snapshot.
+  const liveIds = new Set([
+    ...enrichedReceived.links.map((link) => link.id),
+    ...backfilledSharedLinks.map((link) => link.id),
+  ]);
+  const tombstones = deletedContentIds as string[];
+  if (tombstones.some((id) => !liveIds.has(id))) {
+    await chrome.storage.local.set({ deletedContentIds: tombstones.filter((id) => liveIds.has(id)) });
+  }
+
   // Heal sender sheets stuck on "Not seen" for links already viewed here.
   // Best-effort and throttled; never blocks the local sync.
-  void maybePushSeenStatusesToSenders(latestUser, trimmedReceivedLinks).catch((error) => {
+  void maybePushSeenStatusesToSenders(latestUser, mergedReceivedLinks).catch((error) => {
     console.warn("Seen-status heal failed:", error);
   });
 
   const updatedUser = {
     ...latestUser,
-    receivedLinks: trimmedReceivedLinks,
+    receivedLinks: mergedReceivedLinks,
     sharedLinks,
     friends: currentFriends,
     isNewUser,

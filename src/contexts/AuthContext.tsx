@@ -70,6 +70,7 @@ interface AuthContextType {
   toggleBookmark: (linkId: string, bookmarked: boolean) => Promise<void>;
   editText: (linkId: string, text: string) => Promise<void>;
   deleteContent: (linkId: string) => Promise<void>;
+  deleteReceivedContent: (linkId: string) => Promise<void>;
   updateLinkStatus: (
     linkId: string,
     status: "unseen" | "seen" | "opened",
@@ -651,6 +652,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (!response?.success) throw new Error(response?.error || "Could not delete item");
   };
 
+  const deleteReceivedContent = async (linkId: string) => {
+    if (!currentUser) throw new Error("No user logged in");
+    const previousUser = currentUser;
+    const optimisticUser = {
+      ...currentUser,
+      receivedLinks: (currentUser.receivedLinks || []).filter((link) => link.id !== linkId),
+    };
+    setCurrentUser(optimisticUser);
+    chrome.storage.local.set({ user: optimisticUser });
+    try {
+      const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+        chrome.runtime.sendMessage({ type: "DELETE_RECEIVED_CONTENT", linkId }, (res) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(res);
+        });
+      });
+      if (!response?.success) throw new Error(response?.error || "Could not delete item");
+    } catch (error) {
+      setCurrentUser(previousUser);
+      chrome.storage.local.set({ user: previousUser });
+      throw error;
+    }
+  };
+
   // Update the updateLinkStatus function in AuthContext:
 
   const updateLinkStatus = async (
@@ -818,6 +843,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     toggleBookmark,
     editText,
     deleteContent,
+    deleteReceivedContent,
     updateLinkStatus,
     acceptFriend,
     rejectFriend,

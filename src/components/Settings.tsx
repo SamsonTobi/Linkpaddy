@@ -359,7 +359,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           </div>
         </div>
 
-        <div className="space-y-2 border-t pt-4 mb-3">
+        <div className="space-y-4 border-t pt-5 mb-3">
           <h4 className="text-[#6254F9] text-sm font-medium outfit-medium">
             Your Link Stats
           </h4>
@@ -387,7 +387,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between mt-3 pt-3 border-t">
+          <div className="flex items-center justify-between mt-5 pt-5 border-t">
             <div>
               <p className="text-sm font-medium outfit-medium text-gray-800">
                 Show Link Previews
@@ -411,7 +411,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </button>
           </div>
           {[{ label: "Sharing reminders", description: "Occasional prompts, at most once every 3 days", key: "sharingReminders", value: sharingReminders }].map((setting) => (
-            <div key={setting.key} className="flex items-center justify-between mt-3 pt-3 border-t">
+            <div key={setting.key} className="flex items-center justify-between mt-5 pt-5 border-t">
               <div><p className="text-sm font-medium text-gray-800">{setting.label}</p><p className="text-xs text-gray-500">{setting.description}</p></div>
               <button onClick={() => updateSettings({ [setting.key]: !setting.value })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${setting.value ? "bg-[#6C5CE7]" : "bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${setting.value ? "translate-x-6" : "translate-x-1"}`} /></button>
             </div>
