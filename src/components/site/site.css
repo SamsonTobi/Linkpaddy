@@ -1,0 +1,61 @@
+@import "@fontsource/gabarito/latin-500.css";
+@import "@fontsource/gabarito/latin-700.css";
+@import "@fontsource/gabarito/latin-800.css";
+@import "@fontsource/hanken-grotesk/latin-400.css";
+@import "@fontsource/hanken-grotesk/latin-500.css";
+@import "@fontsource/hanken-grotesk/latin-700.css";
+
+/* Website-only rules. Everything is scoped to .site so the extension popup,
+   which shares this stylesheet bundle, is untouched. */
+
+html:has(.site) {
+  scroll-behavior: smooth;
+  scrollbar-color: #6c5ce7 #faf9ff;
+}
+
+.site {
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: 0;
+  background: #faf9ff;
+  color: #1e1638;
+}
+
+.site h1,
+.site h2,
+.site h3,
+.site h4 {
+  font-family: "Gabarito", ui-rounded, system-ui, sans-serif;
+  text-wrap: balance;
+}
+
+.site ::selection {
+  background: #2f278d;
+  color: #fff;
+}
+
+.site :focus-visible {
+  outline: 3px solid #a99bff;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+/* A rule made of halftone dots. */
+.dot-rule {
+  height: 6px;
+  color: currentColor;
+  background-image: radial-gradient(circle at 3px 3px, currentColor 1.6px, transparent 2px);
+  background-size: 10px 6px;
+  background-repeat: repeat-x;
+}
+
+@keyframes site-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.site-rise { animation: site-rise 700ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  html:has(.site) { scroll-behavior: auto; }
+  .site-rise { animation: none; }
+}

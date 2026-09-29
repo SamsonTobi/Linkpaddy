@@ -6,13 +6,39 @@
     <title>LinkPaddy Privacy Policy</title>
     <meta name="description" content="LinkPaddy privacy policy." />
     <style>
+      @font-face {
+        font-family: "Gabarito";
+        font-weight: 800;
+        font-display: swap;
+        src: url("/assets/fonts/gabarito-latin-800-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Gabarito";
+        font-weight: 700;
+        font-display: swap;
+        src: url("/assets/fonts/gabarito-latin-700-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Hanken Grotesk";
+        font-weight: 400;
+        font-display: swap;
+        src: url("/assets/fonts/hanken-grotesk-latin-400-normal.woff2") format("woff2");
+      }
+      @font-face {
+        font-family: "Hanken Grotesk";
+        font-weight: 700;
+        font-display: swap;
+        src: url("/assets/fonts/hanken-grotesk-latin-700-normal.woff2") format("woff2");
+      }
+
       :root {
         color-scheme: light;
-        --bg: #0f172a;
-        --surface: #ffffff;
-        --text: #0f172a;
-        --muted: #475569;
-        --accent: #1d4ed8;
+        --brand: #6c5ce7;
+        --deep: #2f278d;
+        --ink: #1e1638;
+        --muted: #5b5675;
+        --mist: #faf9ff;
+        --lilac: #efebff;
       }
 
       * {
@@ -21,60 +47,94 @@
 
       body {
         margin: 0;
-        font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-        background: linear-gradient(135deg, #e2e8f0, #f8fafc);
-        color: var(--text);
+        font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+        background: var(--mist);
+        color: var(--ink);
+      }
+
+      ::selection {
+        background: var(--deep);
+        color: #fff;
       }
 
       header {
-        background: var(--bg);
+        position: relative;
+        overflow: hidden;
+        background: var(--brand);
         color: #ffffff;
-        padding: 48px 20px;
+        padding: 28px 20px 64px;
+      }
+
+      /* Halftone: dots grow toward the bottom right corner. */
+      header::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(circle at center, var(--deep) 2.2px, transparent 3.2px) 0 0 / 14px 14px;
+        -webkit-mask-image: radial-gradient(ellipse at 100% 100%, #000 0%, transparent 70%);
+        mask-image: radial-gradient(ellipse at 100% 100%, #000 0%, transparent 70%);
       }
 
       header .container {
-        max-width: 900px;
+        position: relative;
+        max-width: 760px;
         margin: 0 auto;
+      }
+
+      header .home {
+        display: inline-block;
+        margin-bottom: 40px;
+        color: #fff;
+        font-family: "Gabarito", ui-rounded, system-ui, sans-serif;
+        font-size: 24px;
+        font-weight: 700;
+        text-decoration: none;
       }
 
       header h1 {
         margin: 0 0 8px 0;
-        font-size: 32px;
-        letter-spacing: -0.04em;
+        font-family: "Gabarito", ui-rounded, system-ui, sans-serif;
+        font-size: clamp(36px, 7vw, 56px);
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.035em;
       }
 
       header p {
         margin: 0;
-        color: #cbd5f5;
+        color: #ffffff;
       }
 
       main {
-        padding: 32px 20px 64px;
+        padding: 40px 20px 64px;
       }
 
       .card {
-        max-width: 900px;
+        max-width: 760px;
         margin: 0 auto;
-        background: var(--surface);
-        border-radius: 16px;
-        padding: 32px;
-        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
       }
 
       h2 {
-        margin-top: 28px;
-        font-size: 22px;
-        letter-spacing: -0.03em;
+        margin: 40px 0 8px;
+        font-family: "Gabarito", ui-rounded, system-ui, sans-serif;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+
+      h2:first-child {
+        margin-top: 0;
       }
 
       p {
-        line-height: 1.6;
+        line-height: 1.65;
         color: var(--muted);
       }
 
       ul {
         padding-left: 20px;
         color: var(--muted);
+        line-height: 1.65;
       }
 
       li {
@@ -82,20 +142,28 @@
       }
 
       a {
-        color: var(--accent);
+        color: var(--brand);
+        text-underline-offset: 3px;
+      }
+
+      a:focus-visible {
+        outline: 3px solid #a99bff;
+        outline-offset: 3px;
       }
 
       footer {
         text-align: center;
         color: var(--muted);
-        padding: 16px 20px 40px;
+        padding: 24px 20px 40px;
+        border-top: 1px solid rgba(47, 39, 141, 0.1);
       }
     </style>
   </head>
   <body>
     <header>
       <div class="container">
-        <h1>LinkPaddy Privacy Policy</h1>
+        <a class="home" href="/">LinkPaddy</a>
+        <h1>Privacy policy</h1>
         <p>Last updated: February 11, 2026</p>
       </div>
     </header>

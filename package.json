@@ -10,6 +10,8 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
+    "@fontsource/gabarito": "^5.3.0",
+    "@fontsource/hanken-grotesk": "^5.3.0",
     "@fontsource/inter": "^5.2.8",
     "@phosphor-icons/react": "^2.1.10",
     "firebase": "^10.14.1",
