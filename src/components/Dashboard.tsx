@@ -163,7 +163,27 @@ const Dashboard: React.FC = () => {
     }
   }, []);
 
-  const openSidebar = () => {
+  const openSidebar = async () => {
+    // Open the side panel directly from the click handler first: Edge and
+    // Chrome require user activation for sidePanel.open(), which is lost
+    // when hopping through the background via sendMessage. Falling back
+    // to the background keeps the context-menu path working.
+    try {
+      const sidePanel = (
+        chrome as unknown as {
+          sidePanel?: { open: (opts: { windowId: number }) => Promise<void> | void };
+        }
+      ).sidePanel;
+      if (sidePanel?.open) {
+        const currentWindow = await chrome.windows.getCurrent();
+        if (typeof currentWindow.id === "number") {
+          await sidePanel.open({ windowId: currentWindow.id });
+          return;
+        }
+      }
+    } catch {
+      // Fall through to the background message below.
+    }
     try {
       chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" }, () => {
         // Background opens the native side panel (falls back to popup).
@@ -990,19 +1010,6 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <CustomButton
-            onClick={() => {
-              setSharePrefill(null);
-              setShowShareLink(true);
-            }}
-            variant="primary"
-            size="md"
-            className="rounded-full px-5 py-2.5 font-medium"
-            showArrow={false}
-            trailingIcon={<ShareNetwork className="w-4 h-4" />}
-          >
-            Share anything
-          </CustomButton>
           <button
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-gray-100 rounded-full"

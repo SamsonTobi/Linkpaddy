@@ -39,18 +39,34 @@ async function resolveWindowId(fallback?: number): Promise<number | null> {
   if (typeof fallback === "number") {
     return fallback;
   }
+  // Prefer the active tab's window: when the request comes from the popup
+  // (via runtime message) getCurrent() can return the popup itself, whose
+  // window id sidePanel.open() rejects. The active tab always lives in a
+  // normal browser window, which is what the panel must attach to.
   try {
-    const current = await chrome.windows.getCurrent();
-    if (typeof current.id === "number") {
-      return current.id;
+    const tabs = await chrome.tabs.query({
+      active: true,
+      lastFocusedWindow: true,
+    });
+    const windowId = tabs?.[0]?.windowId;
+    if (typeof windowId === "number") {
+      return windowId;
     }
   } catch {
-    // Fall through to last-focused lookup.
+    // Fall through to window lookups.
   }
   try {
     const lastFocused = await chrome.windows.getLastFocused();
     if (typeof lastFocused.id === "number") {
       return lastFocused.id;
+    }
+  } catch {
+    // Fall through to current-window lookup.
+  }
+  try {
+    const current = await chrome.windows.getCurrent();
+    if (typeof current.id === "number") {
+      return current.id;
     }
   } catch {
     return null;
