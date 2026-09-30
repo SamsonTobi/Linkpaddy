@@ -16,7 +16,7 @@ const LoadingSpinner: React.FC = () => (
   </div>
 );
 
-const AppContent: React.FC = () => {
+export const AppContent: React.FC = () => {
   const { currentUser, isLoading, isNewUser } = useAuth();
   const [showContent, setShowContent] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);

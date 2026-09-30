@@ -16,6 +16,7 @@ const firebaseEnv = {
 module.exports = {
   entry: {
     popup: "./src/index.tsx",
+    sidepanel: "./src/sidepanel.tsx",
     background: "./src/background.ts",
     contentScript: "./src/contentScript.ts",
   },
@@ -59,6 +60,11 @@ module.exports = {
       template: "./public/index.html",
       filename: "index.html",
       chunks: ["popup"],
+    }),
+    new HtmlWebpackPlugin({
+      template: "./public/index.html",
+      filename: "sidepanel.html",
+      chunks: ["sidepanel"],
     }),
     new CopyPlugin({
       patterns: [

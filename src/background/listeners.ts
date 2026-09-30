@@ -2,7 +2,7 @@ import { signIn, handleSignOut, deleteUser, searchUserInternal, updateSettingsIn
 import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInternal } from "./friends";
 import { checkForNewLinks, updateBadge } from "./sync";
 import { refreshFriendProfiles } from "./friendsSync";
-import { openExtensionUi } from "./ui";
+import { openExtensionUi, openSidePanel, keepPopupOnActionClick } from "./ui";
 import { deleteContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
 import { ensureSharingReminderAlarm, maybeShowSharingReminder, SHARING_REMINDER_ALARM } from "./reminders";
 
@@ -63,6 +63,12 @@ export function registerBackgroundListeners() {
       title: "Share this site with LinkPaddy",
       contexts: ["page"],
     });
+    chrome.contextMenus.create({
+      id: "openSidebarMenu",
+      title: "Open LinkPaddy sidebar",
+      contexts: ["page", "action"],
+    });
+    void keepPopupOnActionClick();
     ensureCheckNewLinksAlarm();
     ensureSharingReminderAlarm();
     triggerQuickSync("onInstalled");
@@ -108,6 +114,7 @@ export function registerBackgroundListeners() {
   // Initial badge check when service worker starts
   ensureCheckNewLinksAlarm();
   ensureSharingReminderAlarm();
+  void keepPopupOnActionClick();
   triggerQuickSync("serviceWorkerStart");
   updateBadge();
 
@@ -117,6 +124,14 @@ export function registerBackgroundListeners() {
       chrome.storage.local.set({ shareUrl: tab.url }, () => {
         // Open the extension popup
         openExtensionUi();
+      });
+      return;
+    }
+    if (info.menuItemId === "openSidebarMenu") {
+      void openSidePanel(tab?.windowId).then((opened) => {
+        if (!opened) {
+          openExtensionUi();
+        }
       });
     }
   });
@@ -149,6 +164,22 @@ export function registerBackgroundListeners() {
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "SIGN_IN") {
       signIn();
+    } else if (message.type === "OPEN_SIDE_PANEL") {
+      openSidePanel(sender.tab?.windowId)
+        .then((opened) => {
+          if (!opened) {
+            openExtensionUi();
+          }
+          sendResponse({ success: opened });
+        })
+        .catch((error) => {
+          openExtensionUi();
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        });
+      return true; // Async response
     } else if (message.type === "SIGN_OUT") {
       handleSignOut();
     } else if (message.type === "DELETE_ACCOUNT") {
