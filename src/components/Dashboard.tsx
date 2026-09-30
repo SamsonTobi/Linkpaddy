@@ -5,6 +5,7 @@ import {
   Users,
   ShareNetwork,
   Gear,
+  SidebarSimple,
   UserMinus,
   LinkBreak,
   UsersThree,
@@ -149,6 +150,29 @@ const Dashboard: React.FC = () => {
   const [toast, setToast] = useState<string | null>(null);
   const [showNavigation, setShowNavigation] = useState(true);
   const lastScrollTop = React.useRef(0);
+
+  // Native side panel availability (Chromium 114+ only)
+  const [sidePanelAvailable, setSidePanelAvailable] = useState(false);
+  useEffect(() => {
+    try {
+      setSidePanelAvailable(
+        !!(chrome as unknown as { sidePanel?: unknown }).sidePanel,
+      );
+    } catch {
+      setSidePanelAvailable(false);
+    }
+  }, []);
+
+  const openSidebar = () => {
+    try {
+      chrome.runtime.sendMessage({ type: "OPEN_SIDE_PANEL" }, () => {
+        // Background opens the native side panel (falls back to popup).
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      // Not running as an extension; no-op.
+    }
+  };
 
   // Invite state (for the "Bring your friends aboard" card)
   const [showInviteDialog, setShowInviteDialog] = useState(false);
@@ -985,6 +1009,16 @@ const Dashboard: React.FC = () => {
           >
             <Gear className="w-5 h-5" />
           </button>
+          {sidePanelAvailable && (
+            <button
+              onClick={openSidebar}
+              title="Open sidebar"
+              aria-label="Open LinkPaddy sidebar"
+              className="p-2 hover:bg-gray-100 rounded-full"
+            >
+              <SidebarSimple className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
 
