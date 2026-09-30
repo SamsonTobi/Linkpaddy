@@ -6,6 +6,7 @@ import {
   ShareNetwork,
   Gear,
   SidebarSimple,
+  MagnifyingGlass,
   UserMinus,
   LinkBreak,
   UsersThree,
@@ -153,6 +154,13 @@ const Dashboard: React.FC = () => {
 
   // Native side panel availability (Chromium 114+ only)
   const [sidePanelAvailable, setSidePanelAvailable] = useState(false);
+  // Remembers the "Open in sidebar" choice so the next toolbar click
+  // opens the sidebar instead of the popup. Toggled back via the same
+  // header button.
+  const [preferSidebar, setPreferSidebar] = useState(false);
+  // Header search state
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   useEffect(() => {
     try {
       setSidePanelAvailable(
@@ -161,9 +169,57 @@ const Dashboard: React.FC = () => {
     } catch {
       setSidePanelAvailable(false);
     }
+    try {
+      chrome.storage.local.get(["preferSidebar"], (result) => {
+        setPreferSidebar(result?.preferSidebar === true);
+      });
+      const handleChange = (
+        changes: Record<string, { newValue?: unknown }>,
+        areaName: string,
+      ) => {
+        if (areaName === "local" && changes.preferSidebar) {
+          setPreferSidebar(changes.preferSidebar.newValue === true);
+        }
+      };
+      chrome.storage.onChanged.addListener(handleChange);
+      return () => {
+        try {
+          chrome.storage.onChanged.removeListener(handleChange);
+        } catch {
+          // Listener already gone; no-op.
+        }
+      };
+    } catch {
+      setPreferSidebar(false);
+    }
+    return undefined;
   }, []);
 
+  const recordSidebarPreference = (prefer: boolean) => {
+    setPreferSidebar(prefer);
+    try {
+      chrome.storage.local.set({ preferSidebar: prefer });
+    } catch {
+      // Not running as an extension; state-only update.
+    }
+    try {
+      chrome.runtime.sendMessage(
+        { type: "SET_SIDEBAR_PREFERENCE", prefer },
+        () => {
+          void chrome.runtime.lastError;
+        },
+      );
+    } catch {
+      // Not running as an extension; no-op.
+    }
+  };
+
   const openSidebar = async () => {
+    // Toggle back to popup when the sidebar is already remembered.
+    if (preferSidebar) {
+      recordSidebarPreference(false);
+      return;
+    }
     // Open the side panel directly from the click handler first: Edge and
     // Chrome require user activation for sidePanel.open(), which is lost
     // when hopping through the background via sendMessage. Falling back
@@ -178,6 +234,7 @@ const Dashboard: React.FC = () => {
         const currentWindow = await chrome.windows.getCurrent();
         if (typeof currentWindow.id === "number") {
           await sidePanel.open({ windowId: currentWindow.id });
+          recordSidebarPreference(true);
           return;
         }
       }
@@ -353,6 +410,34 @@ const Dashboard: React.FC = () => {
     return sortedLinks.filter((link) => link.type === "received");
   }, [sortedLinks, linkFilter, currentUser?.bookmarkedLinkIds]);
 
+  // Header search: match the query against the URL, text content, sender
+  // and recipient names, plus the fetched preview title/description.
+  const searchedLinks = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return filteredLinks;
+    return filteredLinks.filter((link: any) => {
+      const preview = link?.link ? linkPreviews[link.link] : undefined;
+      const haystack = [
+        link?.link,
+        link?.text,
+        link?.sender?.displayName,
+        link?.sender?.username,
+        preview?.title,
+        preview?.description,
+        preview?.siteName,
+      ];
+      if (Array.isArray(link?.recipients)) {
+        for (const person of link.recipients) {
+          haystack.push(person?.displayName, person?.username);
+        }
+      }
+      return haystack.some(
+        (value) =>
+          typeof value === "string" && value.toLowerCase().includes(query),
+      );
+    });
+  }, [filteredLinks, searchQuery, linkPreviews]);
+
   // Separate unseen received links. Membership is session-stable: once a
   // link has been shown in Unseen it stays there until the popup is
   // reopened, and newly arrived unseen links join it. Without this, the
@@ -369,10 +454,10 @@ const Dashboard: React.FC = () => {
     }
     const known = stableUnseenIdsRef.current;
     return {
-      unseenReceivedLinks: filteredLinks.filter((link) => known.has(link.id)),
-      otherLinks: filteredLinks.filter((link) => !known.has(link.id)),
+      unseenReceivedLinks: searchedLinks.filter((link) => known.has(link.id)),
+      otherLinks: searchedLinks.filter((link) => !known.has(link.id)),
     };
-  }, [sortedLinks, filteredLinks]);
+  }, [sortedLinks, searchedLinks]);
 
   const getDateLabel = (timestamp: string) => {
     const now = new Date();
@@ -1011,6 +1096,15 @@ const Dashboard: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setSearchOpen((open) => !open)}
+            title="Search links"
+            aria-label="Search links"
+            aria-expanded={searchOpen}
+            className={`p-2 rounded-full ${searchOpen ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}
+          >
+            <MagnifyingGlass className="w-5 h-5" />
+          </button>
+          <button
             onClick={() => setShowSettings(true)}
             className="p-2 hover:bg-gray-100 rounded-full"
           >
@@ -1019,15 +1113,42 @@ const Dashboard: React.FC = () => {
           {sidePanelAvailable && (
             <button
               onClick={openSidebar}
-              title="Open sidebar"
-              aria-label="Open LinkPaddy sidebar"
-              className="p-2 hover:bg-gray-100 rounded-full"
+              title={preferSidebar ? "Remembered: opens in sidebar (click to switch back to popup)" : "Open sidebar"}
+              aria-label={preferSidebar ? "Switch back to popup" : "Open LinkPaddy sidebar"}
+              aria-pressed={preferSidebar}
+              className={`p-2 rounded-full ${preferSidebar ? "bg-gray-900 text-white" : "hover:bg-gray-100"}`}
             >
               <SidebarSimple className="w-5 h-5" />
             </button>
           )}
         </div>
       </div>
+
+      {searchOpen && (
+        <div className="shrink-0 border-b px-4 py-2">
+          <div className="flex items-center gap-2 rounded-full bg-gray-100 px-4 py-2">
+            <MagnifyingGlass className="w-4 h-4 shrink-0 text-gray-500" />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search links..."
+              aria-label="Search links"
+              autoFocus
+              className="w-full bg-transparent text-sm outfit-normal text-gray-900 placeholder-gray-500 outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                title="Clear search"
+                aria-label="Clear search"
+                className="p-1 hover:bg-gray-200 rounded-full"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {activeTab === "links" && recentRecipients.length > 0 && (
         <div className="shrink-0 border-b pb-3 pl-4 pt-2">
@@ -1154,7 +1275,7 @@ const Dashboard: React.FC = () => {
           <div className="space-y-3 h-full">
             {currentUser.sharedLinks &&
             currentUser.receivedLinks &&
-            filteredLinks.length > 0 ? (
+            searchedLinks.length > 0 ? (
               <>
                 {/* Unseen section - only show if there are unseen received links */}
                 {unseenReceivedLinks.length > 0 && (
@@ -1165,6 +1286,7 @@ const Dashboard: React.FC = () => {
                         Unseen
                       </h3>
                     </div>
+                    <div className="grid grid-cols-1 min-[700px]:grid-cols-2 gap-2">
                     {unseenReceivedLinks.map((link) => {
                       const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
@@ -1274,6 +1396,7 @@ const Dashboard: React.FC = () => {
                         </div>
                       );
                     })}
+                    </div>
                   </>
                 )}
 
@@ -1285,12 +1408,13 @@ const Dashboard: React.FC = () => {
                         {group.label}
                       </h3>
                     </div>
+                    <div className="grid grid-cols-1 min-[700px]:grid-cols-2 gap-2">
                     {group.links.map((link) => {
                       const preview = link.link ? linkPreviews[link.link] : undefined;
                       return (
                         <div
                           key={`${link.type}-${link.id}`}
-                          className={`group relative bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors mb-2 ${animatedShareId === link.id ? "animate-share-in" : ""} ${openMoreId === link.id ? "z-10" : ""}`}
+                          className={`group relative bg-gray-50 rounded-xl cursor-pointer hover:bg-gray-100 transition-colors ${animatedShareId === link.id ? "animate-share-in" : ""} ${openMoreId === link.id ? "z-10" : ""}`}
                           onClick={() => handleLinkClick(link)}
                         >
                           {/* Link Preview Image */}
@@ -1391,6 +1515,7 @@ const Dashboard: React.FC = () => {
                         </div>
                       );
                     })}
+                    </div>
                   </div>
                 ))}
               </>

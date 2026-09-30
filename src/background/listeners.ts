@@ -2,7 +2,7 @@ import { signIn, handleSignOut, deleteUser, searchUserInternal, updateSettingsIn
 import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInternal } from "./friends";
 import { checkForNewLinks, updateBadge } from "./sync";
 import { refreshFriendProfiles } from "./friendsSync";
-import { openExtensionUi, openSidePanel, keepPopupOnActionClick } from "./ui";
+import { openExtensionUi, openSidePanel, setSidebarPreferred, syncPanelBehavior } from "./ui";
 import { deleteContent, deleteReceivedContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
 import { ensureSharingReminderAlarm, maybeShowSharingReminder, SHARING_REMINDER_ALARM } from "./reminders";
 
@@ -41,10 +41,14 @@ export function registerBackgroundListeners() {
     }
   });
 
-  // Update badge whenever storage changes
+  // Update badge whenever storage changes, and keep the toolbar click
+  // pointed at the remembered surface when the sidebar preference flips.
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local" && changes.user) {
       updateBadge();
+    }
+    if (areaName === "local" && changes.preferSidebar) {
+      void syncPanelBehavior();
     }
   });
 
@@ -68,7 +72,7 @@ export function registerBackgroundListeners() {
       title: "Open LinkPaddy sidebar",
       contexts: ["page", "action"],
     });
-    void keepPopupOnActionClick();
+    void syncPanelBehavior();
     ensureCheckNewLinksAlarm();
     ensureSharingReminderAlarm();
     triggerQuickSync("onInstalled");
@@ -115,7 +119,7 @@ export function registerBackgroundListeners() {
   // Initial badge check when service worker starts
   ensureCheckNewLinksAlarm();
   ensureSharingReminderAlarm();
-  void keepPopupOnActionClick();
+  void syncPanelBehavior();
   triggerQuickSync("serviceWorkerStart");
   updateBadge();
 
@@ -130,7 +134,10 @@ export function registerBackgroundListeners() {
     }
     if (info.menuItemId === "openSidebarMenu") {
       void openSidePanel(tab?.windowId).then((opened) => {
-        if (!opened) {
+        if (opened) {
+          // Remember the choice so the next toolbar click opens the sidebar.
+          void setSidebarPreferred(true).then(() => syncPanelBehavior());
+        } else {
           openExtensionUi();
         }
       });
@@ -168,7 +175,10 @@ export function registerBackgroundListeners() {
     } else if (message.type === "OPEN_SIDE_PANEL") {
       openSidePanel(sender.tab?.windowId)
         .then((opened) => {
-          if (!opened) {
+          if (opened) {
+            // Remember the choice so the next toolbar click opens the sidebar.
+            void setSidebarPreferred(true).then(() => syncPanelBehavior());
+          } else {
             openExtensionUi();
           }
           sendResponse({ success: opened });
@@ -181,6 +191,10 @@ export function registerBackgroundListeners() {
           });
         });
       return true; // Async response
+    } else if (message.type === "SET_SIDEBAR_PREFERENCE") {
+      void setSidebarPreferred(message.prefer === true).then(() =>
+        syncPanelBehavior(),
+      );
     } else if (message.type === "SIGN_OUT") {
       handleSignOut();
     } else if (message.type === "DELETE_ACCOUNT") {

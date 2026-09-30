@@ -95,6 +95,43 @@ export async function openSidePanel(windowId?: number): Promise<boolean> {
   }
 }
 
+// Storage key remembering the user's preferred extension surface.
+// Set when the user opens the side panel; the next toolbar click then
+// opens the remembered surface instead of always falling back to popup.
+const PREFER_SIDEBAR_KEY = "preferSidebar";
+
+export async function isSidebarPreferred(): Promise<boolean> {
+  try {
+    const result = await chrome.storage.local.get([PREFER_SIDEBAR_KEY]);
+    return result?.[PREFER_SIDEBAR_KEY] === true;
+  } catch {
+    return false;
+  }
+}
+
+export async function setSidebarPreferred(prefer: boolean): Promise<void> {
+  try {
+    await chrome.storage.local.set({ [PREFER_SIDEBAR_KEY]: prefer });
+  } catch {
+    // Storage unavailable; preference simply won't persist.
+  }
+}
+
+// Points the toolbar click at the remembered surface: the side panel
+// when preferred, the popup otherwise.
+export async function syncPanelBehavior(): Promise<void> {
+  const sidePanel = getSidePanelApi();
+  if (!sidePanel?.setPanelBehavior) {
+    return;
+  }
+  try {
+    const prefer = await isSidebarPreferred();
+    await sidePanel.setPanelBehavior({ openPanelOnActionClick: prefer });
+  } catch (error) {
+    console.warn("Could not set side panel behavior:", error);
+  }
+}
+
 // Keep the toolbar popup as the default action; the side panel is
 // opt-in via context menu / in-app toggle so both surfaces coexist.
 export async function keepPopupOnActionClick(): Promise<void> {
