@@ -1,7 +1,7 @@
 import React from "react";
 import { halftoneImg, halftoneWelcomeImg } from "../assets/image";
 import { Halftone, smoothstep, useHalftoneMask } from "./site/Halftone";
-import { BrowserButtons, HalftoneEdge, SiteFooter, SiteHeader } from "./site/SiteChrome";
+import { BrowserButtons, HalftoneEdge, SiteFooter, SiteHeader, WebAppButton } from "./site/SiteChrome";
 import { BROWSER_NAMES, BrowserIcon, STORE_URLS, WEB_APP_URL, detectBrowser, isMobileDevice, type BrowserId } from "./site/browsers";
 import { EntryPointsDemo, FeedScreen, FriendsDemo, NetworkScreen, SeenDemo, SettingsScreen, ShareDemo } from "./site/Demos";
 
@@ -185,22 +185,19 @@ const LandingPage: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <a
-                    href={STORE_URLS[browser]}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-lg font-bold text-brand-deep shadow-[0_14px_30px_-14px_rgba(30,22,56,0.7)] hover:bg-brand-lilac"
-                  >
-                    <BrowserIcon browser={browser} className="h-6 w-6" />
-                    Add to {BROWSER_NAMES[browser]}
-                  </a>
-                  <OtherBrowsers current={browser} />
-                  <p className="text-[15px] text-white">
-                    On your phone?{" "}
-                    <a href={WEB_APP_URL} className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
-                      Use the web app
+                  <div className="flex flex-wrap items-center gap-3">
+                    <a
+                      href={STORE_URLS[browser]}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-lg font-bold text-brand-deep shadow-[0_14px_30px_-14px_rgba(30,22,56,0.7)] hover:bg-brand-lilac"
+                    >
+                      <BrowserIcon browser={browser} className="h-6 w-6" />
+                      Add to {BROWSER_NAMES[browser]}
                     </a>
-                  </p>
+                    <WebAppButton />
+                  </div>
+                  <OtherBrowsers current={browser} />
                 </>
               )}
             </div>
@@ -344,15 +341,14 @@ const LandingPage: React.FC = () => {
           </p>
           <div className="mt-8">
             <BrowserButtons />
+            <div className="mt-3">
+              <WebAppButton className="w-full sm:w-auto" />
+            </div>
           </div>
           <p className="mt-6 text-[15px] text-white">
             Already using it?{" "}
             <a href="/invite" className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
               Invite friends by email
-            </a>
-            {" or "}
-            <a href={WEB_APP_URL} className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
-              open the web app
             </a>
           </p>
         </div>

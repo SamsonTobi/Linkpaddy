@@ -40,9 +40,9 @@ export const SiteHeader: React.FC<{ links: NavLink[] }> = ({ links }) => {
             <>
               <a
                 href={WEB_APP_URL}
-                className="hidden rounded-full px-4 py-2 text-[15px] font-medium text-white hover:bg-white/15 md:inline-block"
+                className="hidden rounded-full border-2 border-white px-5 py-2 text-[15px] font-bold text-white hover:bg-white/15 md:inline-block"
               >
-                Web app
+                Open web app
               </a>
               <a
                 href={STORE_URLS[browser]}
@@ -103,6 +103,16 @@ export const SiteFooter: React.FC = () => (
       </div>
     </div>
   </footer>
+);
+
+/** Opens the web app; outlined so it reads as a peer of the filled store buttons on purple. */
+export const WebAppButton: React.FC<{ className?: string }> = ({ className = "" }) => (
+  <a
+    href={WEB_APP_URL}
+    className={`inline-flex items-center justify-center rounded-full border-2 border-white px-7 py-3.5 text-lg font-bold text-white hover:bg-white/15 ${className}`}
+  >
+    Open web app
+  </a>
 );
 
 /** Store buttons for every supported browser. */

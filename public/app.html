@@ -16,5 +16,18 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // If the bundle throws before React mounts, say so instead of leaving a blank page.
+      window.addEventListener("error", function () {
+        var root = document.getElementById("root");
+        if (root && !root.hasChildNodes()) {
+          root.innerHTML =
+            '<div style="font-family:system-ui,sans-serif;padding:32px;text-align:center;color:#1e1638">' +
+            '<h1 style="font-size:20px">LinkPaddy couldn\'t start</h1>' +
+            '<p style="color:#5b5675">Check your connection and reload the page.</p>' +
+            '<button onclick="location.reload()" style="margin-top:12px;padding:10px 20px;border:0;border-radius:999px;background:#6c5ce7;color:#fff;font-weight:600">Reload</button></div>';
+        }
+      });
+    </script>
   </body>
 </html>
