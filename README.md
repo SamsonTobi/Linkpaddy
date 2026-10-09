@@ -142,7 +142,7 @@ The Webpack build injects Firebase configuration into the client bundle. Firebas
 
 ## Web App (PWA)
 
-The same UI and Firebase data layer also run as an installable web app at `/app/`, for phones and any browser without the extension. `webapp.tsx` installs a small `chrome.*` shim (`src/web/`) backed by `localStorage`, so the background modules run in the page; Google sign-in uses Firebase's popup flow with a redirect fallback.
+The same UI and Firebase data layer also run as an installable web app at `/app/`, for phones and any browser without the extension. `webapp.tsx` installs a small `chrome.*` shim (`src/web/`) backed by `localStorage`, so the background modules run in the page; Google sign-in uses Firebase's popup flow (redirects lose their result in browsers that partition third-party storage).
 
 - **Install**: Chrome/Edge/Android offer it from the browser menu or Settings; on iOS use Share, then Add to Home Screen.
 - **Share target**: on Android the installed app appears in the system share sheet; a shared link opens straight on the friend picker.

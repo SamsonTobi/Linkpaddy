@@ -1,10 +1,8 @@
-import { getRedirectResult } from "firebase/auth";
 import { auth } from "../firebase";
-import { completeSignIn } from "../background/auth";
 import { checkForNewLinks, updateBadge } from "../background/sync";
 import { installChromeShim } from "./chromeShim";
 import { listenForInstallPrompt } from "./install";
-import { REDIRECT_PENDING_KEY, authErrorMessage, webPlatform } from "./platform";
+import { webPlatform } from "./platform";
 import { extractShared } from "./shareTarget";
 
 // The extension's service worker polls on alarms and while a popup is open;
@@ -30,7 +28,7 @@ export function prepareWebRuntime() {
 
 export function startWebRuntime() {
   startSync();
-  void resumeRedirectSignIn();
+  void warmUpPopupSignIn();
   registerServiceWorker();
 }
 
@@ -56,19 +54,22 @@ function startSync() {
   void updateBadge();
 }
 
-/** Picks up a sign-in that finished on a full-page redirect (popup-hostile browsers). */
-async function resumeRedirectSignIn() {
-  // getRedirectResult loads Firebase's auth iframe, so skip it on ordinary page loads.
-  if (window.sessionStorage.getItem(REDIRECT_PENDING_KEY) !== "1") return;
-  window.sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+/**
+ * Firebase loads its sign-in iframe lazily on desktop browsers. If that load
+ * only starts at click time, the popup opens after the click's user-activation
+ * window and gets blocked on slow networks, so start it now. The SDK does the
+ * same eagerly on mobile and Safari through the resolver's _initialize, which
+ * is not in the public types; if it ever disappears this is just a no-op.
+ */
+async function warmUpPopupSignIn() {
   try {
-    const result = await getRedirectResult(auth);
-    if (result?.user) await completeSignIn(Promise.resolve(result.user));
+    await auth.authStateReady();
+    const resolver = (auth as unknown as {
+      _popupRedirectResolver?: { _initialize?: (auth: unknown) => Promise<unknown> };
+    })._popupRedirectResolver;
+    await resolver?._initialize?.(auth);
   } catch (error) {
-    chrome.runtime.sendMessage({
-      type: "SIGN_IN_ERROR",
-      error: authErrorMessage(error).message,
-    });
+    console.warn("Sign-in warm-up skipped:", error);
   }
 }
 
