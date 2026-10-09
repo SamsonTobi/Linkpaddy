@@ -32,6 +32,7 @@ import AddFriend from "./AddFriend";
 import CustomButton from "./ui/CustomButton";
 import { inviteIllus } from "../assets/image";
 import { aggregateRecipientStatus } from "../shared/content";
+import { isWebApp } from "../web/env";
 
 const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
@@ -271,6 +272,8 @@ const Dashboard: React.FC = () => {
 
   // Show shortcut tip once (persisted)
   useEffect(() => {
+    // The tip is about the extension's keyboard shortcut; the web app has none.
+    if (isWebApp()) return;
     chrome.storage.local.get(["shortcutTipShown"], (result) => {
       if (!result.shortcutTipShown) {
         setShowShortcutTip(true);

@@ -1,9 +1,7 @@
-import { signIn, handleSignOut, deleteUser, searchUserInternal, updateSettingsInternal, updateUsernameInternal, completeOnboardingInternal } from "./auth";
-import { addFriend, acceptFriendInternal, rejectFriendInternal, removeFriendInternal } from "./friends";
 import { checkForNewLinks, updateBadge } from "./sync";
-import { refreshFriendProfiles } from "./friendsSync";
 import { openExtensionUi, openSidePanel, setSidebarPreferred, syncPanelBehavior } from "./ui";
-import { deleteContent, deleteReceivedContent, editText, handleUpdateLinkStatusMessage, shareLink, shareContent, handleToggleContentMessage } from "./links";
+import { extensionPlatform } from "./extensionPlatform";
+import { handleMessage } from "./messages";
 import { ensureSharingReminderAlarm, maybeShowSharingReminder, SHARING_REMINDER_ALARM } from "./reminders";
 
 const CHECK_NEW_LINKS_ALARM = "checkNewLinks";
@@ -170,9 +168,7 @@ export function registerBackgroundListeners() {
   });
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === "SIGN_IN") {
-      signIn();
-    } else if (message.type === "OPEN_SIDE_PANEL") {
+    if (message.type === "OPEN_SIDE_PANEL") {
       openSidePanel(sender.tab?.windowId)
         .then((opened) => {
           if (opened) {
@@ -191,99 +187,13 @@ export function registerBackgroundListeners() {
           });
         });
       return true; // Async response
-    } else if (message.type === "SET_SIDEBAR_PREFERENCE") {
+    }
+    if (message.type === "SET_SIDEBAR_PREFERENCE") {
       void setSidebarPreferred(message.prefer === true).then(() =>
         syncPanelBehavior(),
       );
-    } else if (message.type === "SIGN_OUT") {
-      handleSignOut();
-    } else if (message.type === "DELETE_ACCOUNT") {
-      deleteUser(message.uid);
-    } else if (message.type === "ADD_FRIEND") {
-      addFriend(message.currentUser, message.friendUsername, message.friendUid)
-        .then((result) =>
-          sendResponse({ success: true, newFriend: result.newFriend }),
-        )
-        .catch((error) =>
-          sendResponse({ success: false, error: error.message }),
-        );
-      return true; // Indicates that the response is sent asynchronously
-    } else if (message.type === "ACCEPT_FRIEND") {
-      acceptFriendInternal(message.currentUser, message.friendUsername)
-        .then(() => sendResponse({ success: true }))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "REJECT_FRIEND") {
-      rejectFriendInternal(message.currentUser, message.friendUsername)
-        .then(() => sendResponse({ success: true }))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "SHARE_LINK") {
-      shareLink(message.link, message.selectedFriends)
-        .then(() => sendResponse({ success: true }))
-        .catch((error) =>
-          sendResponse({ success: false, error: error.message }),
-        );
-      return true;
-    } else if (message.type === "SHARE_CONTENT") {
-      shareContent({ link: message.link, text: message.text, contentType: message.contentType }, message.selectedFriends)
-        .then(() => sendResponse({ success: true }))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "TOGGLE_LIKE" || message.type === "TOGGLE_BOOKMARK") {
-      handleToggleContentMessage(message, sendResponse);
-      return true;
-    } else if (message.type === "EDIT_TEXT") {
-      editText(message.linkId, message.text).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "DELETE_CONTENT") {
-      deleteContent(message.linkId).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "DELETE_RECEIVED_CONTENT") {
-      deleteReceivedContent(message.linkId).then(() => sendResponse({ success: true })).catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "REFRESH_DATA") {
-      checkForNewLinks()
-        .then(() => sendResponse({ success: true }))
-        .catch((error) =>
-          sendResponse({ success: false, error: error.message }),
-        );
-      return true;
-    } else if (message.type === "UPDATE_LINK_STATUS") {
-      handleUpdateLinkStatusMessage(message, sendResponse);
-      return true;
-    } else if (message.type === "SEARCH_USER") {
-      searchUserInternal(message.searchTerm)
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "REMOVE_FRIEND") {
-      removeFriendInternal(message.currentUser, message.friendUsername)
-        .then(() => sendResponse({ success: true }))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "UPDATE_SETTINGS") {
-      updateSettingsInternal(message.uid, message.settings)
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "UPDATE_USERNAME") {
-      updateUsernameInternal(message.uid, message.nextUsername)
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "COMPLETE_ONBOARDING") {
-      completeOnboardingInternal(message.uid)
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
-    } else if (message.type === "REFRESH_FRIEND_PROFILES") {
-      refreshFriendProfiles(message.uid)
-        .then((result) => sendResponse(result))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true;
+      return false;
     }
-
-    return false;
+    return handleMessage(message, sendResponse, extensionPlatform);
   });
 }

@@ -4,6 +4,7 @@ import { useAuth } from "../contexts/AuthContext";
 import OnboardingAddFriends from "./OnboardingAddFriends";
 import CustomButton from "./ui/CustomButton";
 import PinExtension from "./PinExtension";
+import { isWebApp } from "../web/env";
 
 const Onboarding: React.FC = () => {
   const { currentUser, completeOnboarding, updateUsername } = useAuth();
@@ -64,7 +65,8 @@ const Onboarding: React.FC = () => {
   if (showAddFriends) {
     return (
       <OnboardingAddFriends
-        onComplete={() => setShowPinExtension(true)}
+        // The web app has no toolbar to pin to.
+        onComplete={isWebApp() ? handleComplete : () => setShowPinExtension(true)}
         isCompleting={isCompleting}
         completionError={completionError}
       />
@@ -172,7 +174,7 @@ const Onboarding: React.FC = () => {
         </h1>
         <p className="text-gray-600 mb-6 outfit-normal">
           {currentUser?.displayName?.split(" ")[0]}, you'll need friends to make
-          the most of this extension
+          the most of this {isWebApp() ? "app" : "extension"}
         </p>
 
         {/* Add Friends Button */}

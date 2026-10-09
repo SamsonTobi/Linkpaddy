@@ -20,6 +20,7 @@ export const AppContent: React.FC = () => {
   const { currentUser, isLoading, isNewUser } = useAuth();
   const [showContent, setShowContent] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareText, setShareText] = useState<string | null>(null);
 
   // Check if we run as a webpage or extension
   const isWebPage =
@@ -35,11 +36,15 @@ export const AppContent: React.FC = () => {
     const port = chrome.runtime.connect({ name: "popup" });
 
     // Message listener setup
-    chrome.storage.local.get(["shareUrl"], (result) => {
+    chrome.storage.local.get(["shareUrl", "shareText"], (result) => {
       if (result.shareUrl) {
         setShareUrl(result.shareUrl);
         // Clear the stored URL after retrieving it
         chrome.storage.local.remove("shareUrl");
+      }
+      if (result.shareText) {
+        setShareText(result.shareText);
+        chrome.storage.local.remove("shareText");
       }
     });
 
@@ -82,6 +87,17 @@ export const AppContent: React.FC = () => {
       <ShareLink
         onBack={() => setShareUrl(null)}
         initialLink={shareUrl}
+        skipToFriends={true}
+      />
+    );
+  }
+
+  if (shareText) {
+    return (
+      <ShareLink
+        onBack={() => setShareText(null)}
+        initialText={shareText}
+        initialContentType="text"
         skipToFriends={true}
       />
     );

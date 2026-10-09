@@ -16,6 +16,13 @@ export const BROWSER_NAMES: Record<BrowserId, string> = {
   brave: "Brave",
 };
 
+/** The installable web app. */
+export const WEB_APP_URL = "/app/";
+
+/** Phones and tablets cannot install browser extensions; the web app is their way in. */
+export const isMobileDevice = (): boolean =>
+  typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 /** Edge announces itself in the user agent. Brave does not, so it falls back to Chrome. */
 export const detectBrowser = (): BrowserId =>
   typeof navigator !== "undefined" && /Edg\//.test(navigator.userAgent) ? "edge" : "chrome";

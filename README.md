@@ -56,15 +56,20 @@ src/
   components/                Landing, invite, onboarding, sharing, dashboard, settings
   contexts/                  React authentication and user-data context
   shared/                    Shared types and pure content helpers
-  index.tsx                  Web and extension React entry point
+  index.tsx                  Extension popup and marketing site React entry point
+  webapp.tsx                 Installable web app (PWA) entry point, served at /app/
+  web/                       chrome.* shim, web sign-in, share target, install prompt
 public/
   manifest.json              Manifest V3 configuration
+  pwa/                       Web app manifest, service worker and icons
+  app.html                   Web app HTML shell
   _locales/                  Extension localized strings
   privacy.html               Packaged privacy-policy page
 api/
   send-invite.ts             Vercel/Resend invitation endpoint
 tests/
   content.test.ts            Shared-content unit tests
+  web.test.ts                Web app storage, messaging and share-target tests
 ```
 
 ## Requirements
@@ -134,6 +139,19 @@ The required environment variables are listed in `.env.example`:
 - `RESEND_FROM_ADDRESS`
 
 The Webpack build injects Firebase configuration into the client bundle. Firebase web configuration is not a substitute for Firestore security rules. Keep backend rules restrictive and validate authenticated ownership on writes.
+
+## Web App (PWA)
+
+The same UI and Firebase data layer also run as an installable web app at `/app/`, for phones and any browser without the extension. `webapp.tsx` installs a small `chrome.*` shim (`src/web/`) backed by `localStorage`, so the background modules run in the page; Google sign-in uses Firebase's popup flow with a redirect fallback.
+
+- **Install**: Chrome/Edge/Android offer it from the browser menu or Settings; on iOS use Share, then Add to Home Screen.
+- **Share target**: on Android the installed app appears in the system share sheet; a shared link opens straight on the friend picker.
+- **Offline**: the app shell is cached by `/app/sw.js`; data needs a connection.
+- **Sign-in setup**: add every host that serves the app (for example `linkpaddy.vercel.app`) under Firebase console > Authentication > Settings > Authorized domains. Preview deployments need their host added too.
+- **Vercel**: the Firebase variables above must be set for the Production and Preview environments, because the build injects them. Pushing to `main` deploys; `vercel.json` routes `/app/` to the web app.
+- **Not yet**: push notifications (they need Firebase Cloud Messaging and a sender endpoint), so new links only appear while the app is open.
+
+The extension package does not need `dist/app/`.
 
 ## Extension Permissions
 

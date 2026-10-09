@@ -1,9 +1,6 @@
 import { auth, db } from "../firebase";
-import {
-  signInWithCredential,
-  GoogleAuthProvider,
-  signOut as firebaseSignOut,
-} from "firebase/auth/web-extension";
+import { signOut as firebaseSignOut } from "firebase/auth/web-extension";
+import type { User } from "firebase/auth/web-extension";
 import {
   doc,
   setDoc,
@@ -22,28 +19,6 @@ import { requireMatchingAuthUser } from "./authState";
 function normalizeUsername(value: unknown): string {
   if (typeof value !== "string") return "";
   return value.trim().replace(/^@/, "").toLowerCase();
-}
-
-// Retried fetch for wake-from-idle sign-ins, where the network often isn't
-// up yet on the first attempt (the raw failure used to surface as the
-// cryptic "Failed to fetch" on the login screen).
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  attempts = 3,
-): Promise<Response> {
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    try {
-      return await fetch(url, options);
-    } catch (error) {
-      lastError = error;
-      if (attempt < attempts - 1) {
-        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
-      }
-    }
-  }
-  throw lastError;
 }
 
 /** Map low-level network failures to copy the login screen can show. */
@@ -85,179 +60,32 @@ async function generateUniqueUsername(displayName: unknown): Promise<string> {
   return `${baseName}${Date.now().toString().slice(-6)}`;
 }
 
-export async function signIn() {
+/** The signed-in Firebase user, reduced to what profile creation reads. */
+export interface SignedInUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
+/** Everything that differs between the extension and the web app. */
+export interface AccountPlatform {
+  /** Interactive Google sign-in; resolves with the signed-in Firebase user. */
+  signIn(): Promise<SignedInUser>;
+  /** Runs before any data is deleted, so a cancelled prompt leaves the account intact. */
+  beforeDeleteAccount(): Promise<void>;
+  /** Removes the Firebase Auth user once its data is gone. */
+  deleteIdentity(user: User): Promise<void>;
+}
+
+export async function signIn(platform: AccountPlatform) {
+  await completeSignIn(platform.signIn());
+}
+
+/** Finishes a sign-in that is still pending, reporting the outcome to the UI. */
+export async function completeSignIn(pendingUser: Promise<SignedInUser>) {
   try {
-    // Use launchWebAuthFlow for Edge compatibility
-    const redirectUri = chrome.identity.getRedirectURL();
-    const clientId =
-      "309540318772-nsj2lle011ifcke7f3l5opp9ql9pr013.apps.googleusercontent.com";
-    const scopes = [
-      "https://www.googleapis.com/auth/userinfo.email",
-      "https://www.googleapis.com/auth/userinfo.profile",
-      "openid",
-    ].join(" ");
-
-    const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    authUrl.searchParams.set("client_id", clientId);
-    authUrl.searchParams.set("redirect_uri", redirectUri);
-    authUrl.searchParams.set("response_type", "token");
-    authUrl.searchParams.set("scope", scopes);
-
-    const responseUrl = await new Promise<string>((resolve, reject) => {
-      chrome.identity.launchWebAuthFlow(
-        {
-          url: authUrl.toString(),
-          interactive: true,
-        },
-        (redirectUrl) => {
-          if (chrome.runtime.lastError) {
-            reject(
-              new Error(chrome.runtime.lastError.message || "Auth flow failed"),
-            );
-            return;
-          }
-          if (redirectUrl) {
-            resolve(redirectUrl);
-          } else {
-            reject(new Error("No redirect URL received"));
-          }
-        },
-      );
-    });
-
-    // Extract access token from the redirect URL
-    const url = new URL(responseUrl.replace("#", "?"));
-    const token = url.searchParams.get("access_token");
-
-    if (!token) {
-      throw new Error("No access token in response");
-    }
-
-    const response = await fetchWithRetry(
-      "https://www.googleapis.com/oauth2/v3/userinfo",
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error("Failed to fetch user info");
-    }
-
-    const userInfo = await response.json();
-
-    // Use the access token with GoogleAuthProvider
-    const credential = GoogleAuthProvider.credential(null, token);
-    const result = await signInWithCredential(auth, credential);
-    const user = result.user;
-
-    const userRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userRef);
-
-    let userData;
-    if (!userDoc.exists()) {
-      const username = await generateUniqueUsername(user.displayName);
-
-      // Auto-add founder as the new user's first friend
-      const autoFriends: any[] = [];
-      try {
-        // Try by username first, fall back to email in case username changes
-        let founderSnapshot = await getDocs(
-          query(collection(db, "users"), where("username", "==", "samsontobie")),
-        );
-
-        if (founderSnapshot.empty) {
-          founderSnapshot = await getDocs(
-            query(collection(db, "users"), where("email", "==", "samsonadebowale890@gmail.com")),
-          );
-        }
-
-        if (!founderSnapshot.empty) {
-          const founderDoc = founderSnapshot.docs[0];
-          const founderData = founderDoc.data();
-          const founderUid = founderDoc.id;
-          const founderUsername =
-            typeof founderData.username === "string" ? founderData.username : "samsontobie";
-          const now = new Date().toISOString();
-
-          autoFriends.push({
-            uid: founderUid,
-            username: founderUsername,
-            displayName:
-              typeof founderData.displayName === "string"
-                ? founderData.displayName
-                : "",
-            email:
-              typeof founderData.email === "string" ? founderData.email : "",
-            photoURL:
-              typeof founderData.photoURL === "string"
-                ? founderData.photoURL
-                : "",
-            addedAt: now,
-            status: "auto",
-          });
-
-          // Add the new user to the founder's friends list
-          const rawFounderFriends = Array.isArray(founderData.friends)
-            ? founderData.friends
-            : [];
-          rawFounderFriends.push({
-            uid: user.uid,
-            username,
-            displayName: user.displayName || "",
-            email: user.email || "",
-            photoURL: user.photoURL || "",
-            addedAt: now,
-            status: "auto",
-          });
-          await updateDoc(doc(db, "users", founderUid), {
-            friends: rawFounderFriends,
-          });
-        }
-      } catch (e) {
-        console.warn("Failed to auto-add founder friend:", e);
-      }
-
-      userData = {
-        uid: user.uid,
-        email: user.email,
-        username: username,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        friends: autoFriends,
-        pendingInvites: [],
-        isNewUser: true, // Explicitly set this flag
-        joinedAt: new Date().toISOString(),
-        usernameLowercase: username,
-        settings: { sharingReminders: true },
-      };
-      await setDoc(userRef, userData);
-    } else {
-      userData = userDoc.data();
-      userData.isNewUser = false; // Ensure this is set for existing users
-    }
-
-    await new Promise<void>((resolve) => {
-      chrome.storage.local.set(
-        {
-          user: {
-            ...userData,
-            displayName: user.displayName,
-            photoURL: user.photoURL,
-          },
-        },
-        resolve,
-      );
-    });
-
-    chrome.runtime.sendMessage({
-      type: "SIGN_IN_COMPLETE",
-      user: {
-        ...userData,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-      },
-    });
+    await saveSignedInUser(await pendingUser);
   } catch (error) {
     console.error("Sign-in error:", error);
     chrome.runtime.sendMessage({
@@ -265,6 +93,116 @@ export async function signIn() {
       error: friendlySignInError(error),
     });
   }
+}
+
+async function saveSignedInUser(user: SignedInUser) {
+  const userRef = doc(db, "users", user.uid);
+  const userDoc = await getDoc(userRef);
+
+  let userData;
+  if (!userDoc.exists()) {
+    const username = await generateUniqueUsername(user.displayName);
+
+    // Auto-add founder as the new user's first friend
+    const autoFriends: any[] = [];
+    try {
+      // Try by username first, fall back to email in case username changes
+      let founderSnapshot = await getDocs(
+        query(collection(db, "users"), where("username", "==", "samsontobie")),
+      );
+
+      if (founderSnapshot.empty) {
+        founderSnapshot = await getDocs(
+          query(collection(db, "users"), where("email", "==", "samsonadebowale890@gmail.com")),
+        );
+      }
+
+      if (!founderSnapshot.empty) {
+        const founderDoc = founderSnapshot.docs[0];
+        const founderData = founderDoc.data();
+        const founderUid = founderDoc.id;
+        const founderUsername =
+          typeof founderData.username === "string" ? founderData.username : "samsontobie";
+        const now = new Date().toISOString();
+
+        autoFriends.push({
+          uid: founderUid,
+          username: founderUsername,
+          displayName:
+            typeof founderData.displayName === "string"
+              ? founderData.displayName
+              : "",
+          email:
+            typeof founderData.email === "string" ? founderData.email : "",
+          photoURL:
+            typeof founderData.photoURL === "string"
+              ? founderData.photoURL
+              : "",
+          addedAt: now,
+          status: "auto",
+        });
+
+        // Add the new user to the founder's friends list
+        const rawFounderFriends = Array.isArray(founderData.friends)
+          ? founderData.friends
+          : [];
+        rawFounderFriends.push({
+          uid: user.uid,
+          username,
+          displayName: user.displayName || "",
+          email: user.email || "",
+          photoURL: user.photoURL || "",
+          addedAt: now,
+          status: "auto",
+        });
+        await updateDoc(doc(db, "users", founderUid), {
+          friends: rawFounderFriends,
+        });
+      }
+    } catch (e) {
+      console.warn("Failed to auto-add founder friend:", e);
+    }
+
+    userData = {
+      uid: user.uid,
+      email: user.email,
+      username: username,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+      friends: autoFriends,
+      pendingInvites: [],
+      isNewUser: true, // Explicitly set this flag
+      joinedAt: new Date().toISOString(),
+      usernameLowercase: username,
+      settings: { sharingReminders: true },
+    };
+    await setDoc(userRef, userData);
+  } else {
+    userData = userDoc.data();
+    userData.isNewUser = false; // Ensure this is set for existing users
+  }
+
+  await new Promise<void>((resolve) => {
+    chrome.storage.local.set(
+      {
+        user: {
+          ...userData,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+        },
+      },
+      resolve,
+    );
+  });
+
+  chrome.runtime.sendMessage({
+    type: "SIGN_IN_COMPLETE",
+    user: {
+      ...userData,
+      displayName: user.displayName,
+      photoURL: user.photoURL,
+    },
+  });
 }
 
 export async function handleSignOut() {
@@ -287,7 +225,7 @@ export async function handleSignOut() {
   }
 }
 
-export async function deleteUser(uid: string) {
+export async function deleteUser(uid: string, platform: AccountPlatform) {
   try {
     // Get the current user data from storage
     const userData = await new Promise<{
@@ -308,6 +246,8 @@ export async function deleteUser(uid: string) {
     if (userData.uid !== uid) {
       throw new Error("User ID mismatch");
     }
+
+    await platform.beforeDeleteAccount();
 
     // Delete user document from Firestore
     const userRef = doc(db, "users", uid);
@@ -356,51 +296,7 @@ export async function deleteUser(uid: string) {
     // Handle Firebase Auth user deletion
     const currentUser = auth.currentUser;
     if (currentUser && currentUser.uid === uid) {
-      // Get fresh token
-      const token = await new Promise<string>((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: false }, (token) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          if (!token) {
-            reject(new Error("No auth token available"));
-            return;
-          }
-          resolve(token);
-        });
-      });
-
-      // Revoke Google OAuth token
-      await fetch(
-        `https://accounts.google.com/o/oauth2/revoke?token=${token}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-        },
-      );
-
-      // Remove cached token
-      await new Promise<void>((resolve, reject) => {
-        chrome.identity.removeCachedAuthToken({ token }, () => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-            return;
-          }
-          chrome.identity.clearAllCachedAuthTokens(() => {
-            if (chrome.runtime.lastError) {
-              reject(chrome.runtime.lastError);
-              return;
-            }
-            resolve();
-          });
-        });
-      });
-
-      // Delete the Firebase Auth user
-      await currentUser.delete();
+      await platform.deleteIdentity(currentUser);
     }
 
     // Clear local storage

@@ -1,7 +1,7 @@
 import React, { useCallback } from "react";
 import { linkpaddyLogo } from "../../assets/image";
 import { Halftone, smoothstep } from "./Halftone";
-import { BROWSER_NAMES, BrowserIcon, STORE_URLS, detectBrowser } from "./browsers";
+import { BROWSER_NAMES, BrowserIcon, STORE_URLS, WEB_APP_URL, detectBrowser, isMobileDevice } from "./browsers";
 import "./site.css";
 
 interface NavLink {
@@ -12,6 +12,7 @@ interface NavLink {
 /** Header that sits on the brand-purple hero. */
 export const SiteHeader: React.FC<{ links: NavLink[] }> = ({ links }) => {
   const browser = detectBrowser();
+  const mobile = isMobileDevice();
   return (
     <header className="relative z-20">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4 md:px-8 md:py-6">
@@ -28,14 +29,31 @@ export const SiteHeader: React.FC<{ links: NavLink[] }> = ({ links }) => {
               {link.label}
             </a>
           ))}
-          <a
-            href={STORE_URLS[browser]}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="ml-1 rounded-full bg-white px-5 py-2.5 text-[15px] font-bold text-brand-deep hover:bg-brand-lilac"
-          >
-            Add to {BROWSER_NAMES[browser]}
-          </a>
+          {mobile ? (
+            <a
+              href={WEB_APP_URL}
+              className="ml-1 rounded-full bg-white px-5 py-2.5 text-[15px] font-bold text-brand-deep hover:bg-brand-lilac"
+            >
+              Open app
+            </a>
+          ) : (
+            <>
+              <a
+                href={WEB_APP_URL}
+                className="hidden rounded-full px-4 py-2 text-[15px] font-medium text-white hover:bg-white/15 md:inline-block"
+              >
+                Web app
+              </a>
+              <a
+                href={STORE_URLS[browser]}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-1 rounded-full bg-white px-5 py-2.5 text-[15px] font-bold text-brand-deep hover:bg-brand-lilac"
+              >
+                Add to {BROWSER_NAMES[browser]}
+              </a>
+            </>
+          )}
         </nav>
       </div>
     </header>

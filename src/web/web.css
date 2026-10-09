@@ -1,0 +1,43 @@
+/* Shell for the installable web app: one fluid column, full height on phones,
+   centred on larger screens. The popup UI inside is built to be fluid. */
+html,
+body {
+  margin: 0;
+  background: #faf9ff;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.web-shell {
+  position: relative;
+  /* Makes position: fixed descendants (modals, bottom bars) stay inside the column. */
+  contain: layout;
+  width: 100%;
+  max-width: 880px;
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #fff;
+}
+
+@media (min-width: 640px) {
+  .web-shell {
+    box-shadow: 0 0 0 1px rgba(30, 22, 56, 0.06), 0 24px 60px -24px rgba(30, 22, 56, 0.35);
+  }
+}
+
+/* min-h-screen means 100vh, which includes the mobile browser's collapsing
+   toolbar; fill the dvh-sized shell instead. */
+.web-shell .min-h-screen {
+  min-height: 100%;
+}
+
+/* iOS zooms the page when a focused field is under 16px. */
+@media (pointer: coarse) {
+  .web-shell input,
+  .web-shell textarea,
+  .web-shell select {
+    font-size: 16px;
+  }
+}

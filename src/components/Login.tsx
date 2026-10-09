@@ -2,6 +2,7 @@ import React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { halftoneWelcomeImg } from "../assets/image";
 import CustomButton from "./ui/CustomButton";
+import { isWebApp } from "../web/env";
 
 const Login: React.FC = () => {
   const { currentUser, signIn, isLoading, error } = useAuth();
@@ -27,8 +28,9 @@ const Login: React.FC = () => {
         </h1>
 
         <p className="mt-5 text-sm outfit-normal leading-relaxed text-white/50">
-          Send interesting finds to your people, right from your browser in one
-          tap.
+          {isWebApp()
+            ? "Send interesting finds to your people, from any device, in one tap."
+            : "Send interesting finds to your people, right from your browser in one tap."}
         </p>
 
         {error && (
@@ -46,7 +48,7 @@ const Login: React.FC = () => {
             fullWidth
             className="font-semibold rounded-lg"
           >
-            {isLoading ? "Signing in..." : "Continue with Google or Email"}
+            {isLoading ? "Signing in..." : isWebApp() ? "Continue with Google" : "Continue with Google or Email"}
           </CustomButton>
         </div>
       </div>

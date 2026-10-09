@@ -2,7 +2,7 @@ import React from "react";
 import { halftoneImg, halftoneWelcomeImg } from "../assets/image";
 import { Halftone, smoothstep, useHalftoneMask } from "./site/Halftone";
 import { BrowserButtons, HalftoneEdge, SiteFooter, SiteHeader } from "./site/SiteChrome";
-import { BROWSER_NAMES, BrowserIcon, STORE_URLS, detectBrowser, type BrowserId } from "./site/browsers";
+import { BROWSER_NAMES, BrowserIcon, STORE_URLS, WEB_APP_URL, detectBrowser, isMobileDevice, type BrowserId } from "./site/browsers";
 import { EntryPointsDemo, FeedScreen, FriendsDemo, NetworkScreen, SeenDemo, SettingsScreen, ShareDemo } from "./site/Demos";
 
 const PURPLE = "#6C5CE7";
@@ -64,6 +64,7 @@ const AND_MORE = [
   "Link previews",
   "Optional nudges to share",
   "Browser notifications",
+  "A web app you can add to your phone's home screen",
 ];
 
 const AUDIENCES = [
@@ -150,6 +151,7 @@ const OtherBrowsers: React.FC<{ current: BrowserId }> = ({ current }) => {
 
 const LandingPage: React.FC = () => {
   const browser = detectBrowser();
+  const mobile = isMobileDevice();
 
   return (
     <div className="site min-h-screen">
@@ -169,16 +171,38 @@ const LandingPage: React.FC = () => {
               their private feed. No switching tabs, no digging through a group chat.
             </p>
             <div className="mt-8 flex flex-col items-start gap-4">
-              <a
-                href={STORE_URLS[browser]}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-lg font-bold text-brand-deep shadow-[0_14px_30px_-14px_rgba(30,22,56,0.7)] hover:bg-brand-lilac"
-              >
-                <BrowserIcon browser={browser} className="h-6 w-6" />
-                Add to {BROWSER_NAMES[browser]}
-              </a>
-              <OtherBrowsers current={browser} />
+              {mobile ? (
+                <>
+                  <a
+                    href={WEB_APP_URL}
+                    className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-lg font-bold text-brand-deep shadow-[0_14px_30px_-14px_rgba(30,22,56,0.7)] hover:bg-brand-lilac"
+                  >
+                    Open LinkPaddy
+                  </a>
+                  <p className="text-[15px] text-white">
+                    Add it to your home screen, then share to it from any app.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <a
+                    href={STORE_URLS[browser]}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-3 rounded-full bg-white px-7 py-4 text-lg font-bold text-brand-deep shadow-[0_14px_30px_-14px_rgba(30,22,56,0.7)] hover:bg-brand-lilac"
+                  >
+                    <BrowserIcon browser={browser} className="h-6 w-6" />
+                    Add to {BROWSER_NAMES[browser]}
+                  </a>
+                  <OtherBrowsers current={browser} />
+                  <p className="text-[15px] text-white">
+                    On your phone?{" "}
+                    <a href={WEB_APP_URL} className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
+                      Use the web app
+                    </a>
+                  </p>
+                </>
+              )}
             </div>
           </div>
 
@@ -325,6 +349,10 @@ const LandingPage: React.FC = () => {
             Already using it?{" "}
             <a href="/invite" className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
               Invite friends by email
+            </a>
+            {" or "}
+            <a href={WEB_APP_URL} className="font-bold underline decoration-white/50 underline-offset-4 hover:decoration-white">
+              open the web app
             </a>
           </p>
         </div>

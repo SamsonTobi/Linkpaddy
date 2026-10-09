@@ -14,6 +14,8 @@ import {
 } from "@phosphor-icons/react";
 import { inviteIllus } from "../assets/image";
 import CustomButton from "./ui/CustomButton";
+import InstallApp from "../web/InstallApp";
+import { isWebApp } from "../web/env";
 
 const extensionLandingLink = "https://linkpaddy.vercel.app/";
 
@@ -416,6 +418,7 @@ const Settings: React.FC<SettingsProps> = ({ onBack }) => {
               <button onClick={() => updateSettings({ [setting.key]: !setting.value })} className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${setting.value ? "bg-[#6C5CE7]" : "bg-gray-300"}`}><span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${setting.value ? "translate-x-6" : "translate-x-1"}`} /></button>
             </div>
           ))}
+          {isWebApp() && <InstallApp />}
         </div>
 
         <div className="bg-[#F5DD90] rounded-lg px-5 py-6 relative overflow-hidden">
